@@ -8,6 +8,8 @@ import https from 'node:https';
 import dns from 'node:dns';
 import net from 'node:net';
 import { pipeline } from 'node:stream/promises';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse
@@ -37,8 +39,15 @@ import { stampPut } from './sync-stamps.js';
 import { atomicWrite as durableWrite } from './durable.js';
 import { excusedOn, nudgeFor, nudgeWindowOpen, toneOf } from './nudge.js';
 
+// Vercel + Supabase mode (docs/VERCEL_SUPABASE.md): with DATABASE_URL set, every record lives in
+// Postgres (pg-store.js) and each request is one transaction, since no process outlives a
+// request there. Unset — every self-hosted instance — nothing of it is loaded and the JSON files
+// below are the storage, exactly as before.
+const PG = process.env.DATABASE_URL ? await import('./pg-store.js') : null;
 const PORT = +(process.env.PORT || 3000);
-const DATA = process.env.DATA_DIR || '/data';
+// In Postgres mode nothing is kept on disk; what still touches DATA (the Coach's and the media
+// store's boot steps) gets a scratch directory, which a serverless host only offers under /tmp.
+const DATA = process.env.DATA_DIR || (PG ? path.join(os.tmpdir(), 'opengym') : '/data');
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'openGym';
@@ -113,8 +122,8 @@ const lock = f => { try { fs.chmodSync(path.join(DATA, f), 0o600); } catch { /* 
 
 /* ---------- secret + db ---------- */
 const secretFile = path.join(DATA, 'secret');
-if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
-const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
+if (!PG && !fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
+const SECRET = PG ? PG.sessionSecret() : fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
 // Every account, passkey and invite. Only a missing file starts empty: an unreadable one (a write
@@ -142,7 +151,8 @@ function loadDb() {
     }
   }
 }
-let db = loadDb();
+// In Postgres mode this is replaced at the start of every request with what the database holds.
+let db = PG ? PG.emptyDb() : loadDb();
 db.users = db.users || [];
 db.creds = db.creds || [];
 db.subs = db.subs || [];
@@ -172,6 +182,7 @@ const isOwner = user => !!user && isAdmin(user) && user.id === ownerId();
 // whatever the last save wrote (a profile just created) when db.json was later found unreadable.
 // A write cut short leaves the previous db.json.bak whole (temporary file and rename).
 function saveDb() {
+  if (PG) return;   // the unit of work writes what changed once the route is done (pg-store.js)
   const text = JSON.stringify(db, null, 2);
   atomicWrite(dbFile, text, 0o600);
   try { atomicWrite(dbFile + '.bak', text, 0o600); }
@@ -197,6 +208,7 @@ function notePull(user, now = Date.now()) {
 // The later of the last push and the last pull.
 const lastSyncOf = (u, S) => Math.max(S?._ts || 0, u?.lastPull || 0) || null;
 function readState(uid) {
+  if (PG) return PG.preloadedState(uid);
   try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
 }
 // GET and PUT /api/data tell a profile with no state yet from one whose file cannot be read: the
@@ -204,6 +216,7 @@ function readState(uid) {
 // replace, losing what a restore could still bring back.
 const UNREADABLE = Symbol('unreadable');
 function readStateStrict(uid) {
+  if (PG) return PG.preloadedState(uid);
   let raw;
   try { raw = fs.readFileSync(stateFile(uid), 'utf8'); }
   catch (e) { return e.code === 'ENOENT' ? null : UNREADABLE; }
@@ -229,8 +242,11 @@ const records = v => (Array.isArray(v) ? v.filter(record) : []);
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
 let vapid;
-try { vapid = JSON.parse(fs.readFileSync(vapidFile, 'utf8')); }
-catch { vapid = webpush.generateVAPIDKeys(); fs.writeFileSync(vapidFile, JSON.stringify(vapid), { mode: 0o600 }); }
+if (PG) vapid = PG.vapidKeys();
+else {
+  try { vapid = JSON.parse(fs.readFileSync(vapidFile, 'utf8')); }
+  catch { vapid = webpush.generateVAPIDKeys(); fs.writeFileSync(vapidFile, JSON.stringify(vapid), { mode: 0o600 }); }
+}
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || (SECURE ? ORIGIN : 'mailto:admin@localhost');
 webpush.setVapidDetails(VAPID_SUBJECT, vapid.publicKey, vapid.privateKey);
 
@@ -370,7 +386,13 @@ function pushEndpointError(raw) {
 // older client) still gets everything, as before. A resting device with no subscription of its
 // own gets nothing: the phone in the bag must not ring for a rest timed on the desktop. The
 // client re-sends its subscription with its id on every boot, so an id that changed heals there.
-async function sendPush(userId, payload, deviceId) {
+// In Postgres mode a push nobody awaits is still awaited before the request's commit
+// (pg-store.js track): a serverless instance may be frozen as soon as the answer is out.
+function sendPush(userId, payload, deviceId) {
+  const p = sendPushNow(userId, payload, deviceId);
+  return PG ? PG.track(p) : p;
+}
+async function sendPushNow(userId, payload, deviceId) {
   let subs = db.subs.filter(s => s.userId === userId);
   if (deviceId) subs = subs.filter(s => !s.deviceId || s.deviceId === deviceId);
   if (!subs.length) return;
@@ -439,7 +461,9 @@ function scheduleRestTimer(userId, deviceId, sec, lang) {
   for (const old of mine.slice(0, Math.max(0, mine.length - MAX_REST_TIMERS_PER_USER + 1))) {
     clearTimeout(restTimers.get(old)); restTimers.delete(old);
   }
-  restTimers.set(k, setTimeout(() => {
+  // No timer outlives a request in Postgres mode: the due time is stored instead, and the cron tick
+  // (POST /api/cron/tick) sends what is due. clearTimeout() on such a row above does nothing.
+  restTimers.set(k, PG ? { userId, deviceId: deviceId || '', due: Date.now() + sec * 1000, lang: lang || null } : setTimeout(() => {
     restTimers.delete(k);
     sendPush(userId, restTimerPush(lang), deviceId);
   }, sec * 1000));
@@ -502,6 +526,7 @@ const STATE_CACHE_MAX = 64;
 const STATE_CACHE_TTL_MS = Math.max(50, +(process.env.STATE_CACHE_TTL_MS || 600000) || 600000);
 const stateCache = new Map(); // uid -> { mtimeMs, size, hitAt, S }
 function readStateCached(uid) {
+  if (PG) return readState(uid);
   let st;
   try { st = fs.statSync(stateFile(uid)); } catch { stateCache.delete(uid); return null; }
   const now = Date.now();
@@ -544,22 +569,25 @@ function nudgeTick(user, S, now) {
 // user's windows is open and something could still be sent.
 const stateSummaries = new Map(); // uid -> { mtimeMs, size, rem, consent, settled }
 function stateSummary(uid) {
+  if (PG) return summarize(readState(uid));
   let st;
   try { st = fs.statSync(stateFile(uid)); } catch { stateSummaries.delete(uid); return null; }
   const had = stateSummaries.get(uid);
   if (had && had.mtimeMs === st.mtimeMs && had.size === st.size) return had;
-  const S = readStateCached(uid);
+  const sum = { mtimeMs: st.mtimeMs, size: st.size, ...summarize(readStateCached(uid)) };
+  stateSummaries.set(uid, sum);
+  return sum;
+}
+function summarize(S) {
   const r = S?.reminder;
-  const sum = {
-    mtimeMs: st.mtimeMs, size: st.size,
+  return {
     rem: r && typeof r === 'object' ? { on: !!r.on, tz: r.tz, time: r.time, nudge: !!r.nudge } : { on: false },
     consent: !!S?.coach?.consent?.agreedAt,
     settled: '',   // a local date the reminder was found to owe nothing on, for this file
   };
-  stateSummaries.set(uid, sum);
-  return sum;
 }
-setInterval(() => {
+// Run every REMINDER_TICK_MS by the long-lived server; in Postgres mode by the cron tick instead.
+function reminderTick() {
   for (const user of db.users) {
     if (user.disabled) continue;            // locked out everywhere, reminders included
     if (!db.subs.some(s => s.userId === user.id)) continue;
@@ -594,9 +622,10 @@ setInterval(() => {
       console.error('reminder tick', user.id, e);
     }
   }
+}
 // Checked every 10s (not 60s) — ticks aren't aligned to the top of the minute, so a 60s
 // interval could sit on your target minute for up to 59s before noticing. 10s caps that at ~9s.
-}, REMINDER_TICK_MS).unref();
+if (!PG) setInterval(reminderTick, REMINDER_TICK_MS).unref();
 
 /* ---------- sessions (signed cookie) ---------- */
 function sign(payload) {
@@ -816,7 +845,7 @@ function takeChallenge(cid) {
   if (!c || c.exp < Date.now()) return null;
   return c;
 }
-setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k); }, 60000).unref();
+if (!PG) setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k); }, 60000).unref();
 
 // ---------- device pairing (mobile app "connect to my server", no WebAuthn ceremony) ----------
 // A passkey ceremony can't run inside the app's WebView (its origin never matches RP_ID), so the
@@ -831,7 +860,7 @@ function makePairCode() {
   } while (pairings.has(code));
   return code;
 }
-setInterval(() => { for (const [k, v] of pairings) if (v.exp < Date.now()) pairings.delete(k); }, 60000).unref();
+if (!PG) setInterval(() => { for (const [k, v] of pairings) if (v.exp < Date.now()) pairings.delete(k); }, 60000).unref();
 
 /* ---------- helpers ---------- */
 function json(res, code, obj, extraHeaders) {
@@ -847,6 +876,11 @@ class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 function readBody(req) {
+  // Postgres mode: the unit of work has read the body already, before its transaction opened.
+  if (req.bufferedBody) {
+    const { chunks, over } = req.bufferedBody;
+    return over ? Promise.reject(new HttpError(413, 'body too large')) : parseBody(req, chunks);
+  }
   return new Promise((resolve, reject) => {
     let size = 0, over = false; const chunks = [];
     req.on('data', d => {
@@ -870,29 +904,32 @@ function readBody(req) {
     });
     req.on('end', () => {
       if (over) return;
-      if (!chunks.length) return resolve({});
-      // A body has to say it is JSON. The three types a form can send, and the ones a no-cors
-      // fetch can send, are exactly the ones that need no CORS preflight; parsing them anyway
-      // let another site's form reach any route that reads a body, and on the passkey sign-in
-      // that meant setting the victim's session to an account the attacker holds. Every client
-      // in the tree already sends application/json (lib/api.js, sw.js).
-      if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] || '')) {
-        return reject(new HttpError(415, 'content-type must be application/json'));
-      }
-      let body;
-      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-      catch { return reject(new HttpError(400, 'invalid json')); }
-      // Every handler reads fields off the result, so a JSON `null`, string, number or array is
-      // as much a client mistake as unparseable text — refused once here rather than dereferenced
-      // (and turned into a TypeError) in each route.
-      if (!body || typeof body !== 'object' || Array.isArray(body)) return reject(new HttpError(400, 'invalid json'));
-      resolve(body);
+      parseBody(req, chunks).then(resolve, reject);
     });
     // A browser hanging up mid-body — which is what pagehide does to an in-flight sync — is not
     // the caller getting a request wrong, it is nobody being left to answer. Marked so the
     // catch-all at the bottom says one line instead of a stack trace and a 500 into a dead socket.
     req.on('error', e => reject(Object.assign(e, { clientGone: true })));
   });
+}
+async function parseBody(req, chunks) {
+  if (!chunks.length) return {};
+  // A body has to say it is JSON. The three types a form can send, and the ones a no-cors
+  // fetch can send, are exactly the ones that need no CORS preflight; parsing them anyway
+  // let another site's form reach any route that reads a body, and on the passkey sign-in
+  // that meant setting the victim's session to an account the attacker holds. Every client
+  // in the tree already sends application/json (lib/api.js, sw.js).
+  if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] || '')) {
+    throw new HttpError(415, 'content-type must be application/json');
+  }
+  let body;
+  try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new HttpError(400, 'invalid json'); }
+  // Every handler reads fields off the result, so a JSON `null`, string, number or array is
+  // as much a client mistake as unparseable text — refused once here rather than dereferenced
+  // (and turned into a TypeError) in each route.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'invalid json');
+  return body;
 }
 // A caller-supplied field that is meant to be text. String() alone is not safe on a parsed body:
 // `{"code":{"toString":1}}` is valid JSON and String() throws on it.
@@ -923,7 +960,8 @@ function livePresence(uid) {
   const { hiddenAt: _away, ...live } = p;   // the mark is bookkeeping; the dashboard gets the row it always did
   return live;
 }
-setInterval(() => { const now = Date.now(); for (const [k, v] of presence) if (!presenceListed(v, now)) presence.delete(k); }, 30000).unref();
+function sweepPresence() { const now = Date.now(); for (const [k, v] of presence) if (!presenceListed(v, now)) presence.delete(k); }
+if (!PG) setInterval(sweepPresence, 30000).unref();
 
 /* ---------- audit log ---------- */
 // Who signed in, who tried and failed, and what an admin changed. One JSON object per line in
@@ -970,6 +1008,7 @@ function clientIp(req) {
 }
 
 function auditLines() {
+  if (PG) return PG.auditRows();
   let text;
   try { text = fs.readFileSync(auditFile, 'utf8'); } catch { return []; }
   const rows = [];
@@ -1011,12 +1050,14 @@ function audit(req, ev, f = {}) {
   if (f.act) rec.act = String(f.act).slice(0, 40);
   const ip = clientIp(req);
   if (ip) rec.ip = ip;
+  // Postgres mode: one row of audit_log, written with the rest of the request (ids are the table's).
+  if (PG) { PG.auditAppend(rec); return; }
   try { fs.appendFileSync(auditFile, JSON.stringify(rec) + '\n'); }
   catch (e) { return console.error('audit write failed', e.message); }
   // Amortized: a 5000-event cap rewrites the file once per ~1250 events.
   if (AUDIT_MAX && ++auditCount > AUDIT_MAX * 1.25) compactAudit();
 }
-if (AUDIT_ON) {
+if (AUDIT_ON && !PG) {
   compactAudit();                                // prune on boot, seed auditSeq/auditCount
   setInterval(compactAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
 }
@@ -1066,7 +1107,7 @@ const ACCOUNT_FAILS = createBackoff({
   // At most one per profile with a password, so this cannot grow without bound.
   keep: k => k.startsWith('acct:') && hasPassword(db.users.find(u => u.id === k.slice(5)))
 });
-setInterval(() => { AUTH_BURST.sweep(); ADDR_FAILS.sweep(); ACCOUNT_FAILS.sweep(); }, 60000).unref();
+if (!PG) setInterval(() => { AUTH_BURST.sweep(); ADDR_FAILS.sweep(); ACCOUNT_FAILS.sweep(); }, 60000).unref();
 
 // Route -> the kind of failure it can count. Every route listed here also spends the burst
 // budget; `null` spends only that.
@@ -1134,7 +1175,7 @@ function strikeAddress(req, kind) {
 // dropped is a row that says the same thing as the ten before it.
 const FAIL_AUDIT = createWindow({ max: 10, windowMs: 60000 });
 const FAIL_AUDIT_ALL = createWindow({ max: 120, windowMs: 60000 });
-setInterval(() => { FAIL_AUDIT.sweep(); FAIL_AUDIT_ALL.sweep(); }, 60000).unref();
+if (!PG) setInterval(() => { FAIL_AUDIT.sweep(); FAIL_AUDIT_ALL.sweep(); }, 60000).unref();
 function auditFail(req, ev, f) {
   if (FAIL_AUDIT.take(ev + '|' + limitAddress(req)) || FAIL_AUDIT_ALL.take(ev)) return;
   audit(req, ev, f);
@@ -1914,7 +1955,9 @@ const passkeyRoutes = {
 // MEDIA_UPLOADS=0 takes the routes and the /api/config block away, but the store is created
 // either way: an admin deleting a profile must still remove files uploaded while it was on.
 const MEDIA_LIMITS = mediaLimits(process.env);
-const MEDIA_ON = MEDIA_LIMITS.enabled;
+// Never in Postgres mode: the files would live on an instance's scratch disk, gone with it, and a
+// serverless host refuses bodies past a few MB anyway. The app then offers the link field only.
+const MEDIA_ON = MEDIA_LIMITS.enabled && !PG;
 const MEDIA = createMediaStore({ dir: path.join(DATA, 'uploads'), limits: MEDIA_LIMITS, readState });
 // Leftovers of uploads the previous process was receiving when it stopped.
 try { MEDIA.cleanTmp(); } catch (e) { console.error('media: boot cleanup failed', e.message); }
@@ -1927,7 +1970,7 @@ const MEDIA_SWEEPS = createWindow({ max: 10, windowMs: 3600000 });
 // Uid -> until when its throttle has already been recorded, so a client hammering a closed
 // window writes one audit line per window, not one per request.
 const mediaThrottleNoted = new Map();
-setInterval(() => {
+if (!PG) setInterval(() => {
   MEDIA_BURST.sweep(); MEDIA_SWEEPS.sweep();
   for (const [k, until] of mediaThrottleNoted) if (until < Date.now()) mediaThrottleNoted.delete(k);
 }, 600000).unref();
@@ -1935,7 +1978,7 @@ setInterval(() => {
 // person taps "send test" a few times and starts a rest after each set; a loop does neither.
 const PUSH_TESTS = createWindow({ max: 10, windowMs: 600000 });
 const REST_TIMER_SETS = createWindow({ max: 60, windowMs: 60000 });
-setInterval(() => { PUSH_TESTS.sweep(); REST_TIMER_SETS.sweep(); }, 600000).unref();
+if (!PG) setInterval(() => { PUSH_TESTS.sweep(); REST_TIMER_SETS.sweep(); }, 600000).unref();
 function pushThrottled(res, win, user) {
   const wait = win.take(user.id);
   if (!wait) return false;
@@ -2055,6 +2098,7 @@ const mediaRoutes = {
 const DATA_PROBE_MS = 5000;
 let dataProbe = { at: 0, ok: false };
 function dataWritable() {
+  if (PG) return true;   // the request is already inside a transaction that has read the database
   const now = Date.now();
   if (dataProbe.at && now - dataProbe.at < DATA_PROBE_MS) return dataProbe.ok;
   const probe = path.join(DATA, '.health-' + process.pid);
@@ -2071,6 +2115,30 @@ function dataWritable() {
   dataProbe = { at: now, ok };
   return ok;
 }
+
+/* ---------- cron tick (Postgres mode only) ---------- */
+// What the long-lived server does on its timers, done when this is called instead: Supabase's
+// pg_cron calls it every minute, and every ten seconds while a rest timer is due
+// (docs/VERCEL_SUPABASE.md). The credential is CRON_SECRET as a Bearer; without one set the route
+// refuses everything.
+const cronRoutes = {
+  'POST /api/cron/tick': async (req, res) => {
+    if (!PG.cronAuthorized(req)) return json(res, 401, { error: 'not authorized' });
+    const now = Date.now();
+    let rest = 0;
+    for (const [k, t] of restTimers) {
+      if (t.due > now) continue;
+      restTimers.delete(k);
+      rest++;
+      sendPush(t.userId, restTimerPush(t.lang || undefined), t.deviceId || undefined);
+    }
+    reminderTick();
+    sweepPresence();
+    for (const lim of [AUTH_BURST, ADDR_FAILS, ACCOUNT_FAILS, FAIL_AUDIT, FAIL_AUDIT_ALL, PUSH_TESTS, REST_TIMER_SETS]) lim.sweep();
+    await PG.purge({ auditDays: AUDIT_DAYS, auditMax: AUDIT_MAX });
+    json(res, 200, { ok: true, rest });
+  }
+};
 
 const routes = {
   // 503 rather than a flag in a 200: the container healthcheck is `wget --spider`, which reads
@@ -2383,7 +2451,7 @@ const routes = {
   'GET /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    const state = readStateStrict(user.id);
+    const state = PG ? await PG.readStateDoc(user.id) : readStateStrict(user.id);
     if (state === UNREADABLE) { console.error('state file unreadable for', user.id); return json(res, 503, { error: 'state unreadable' }); }
     notePull(user);
     json(res, 200, { state: forClient(state), rev: state?._rev || 0 });
@@ -2397,7 +2465,7 @@ const routes = {
   'GET /api/data/rev': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    const doc = readStateCached(user.id);
+    const doc = PG ? await PG.readRev(user.id) : readStateCached(user.id);
     json(res, 200, { rev: doc?._rev || 0, ...(doc?._wid ? { wid: doc._wid } : {}) });
   },
 
@@ -2459,7 +2527,8 @@ const routes = {
     // before revisions, or a deliberate replace such as a backup import) overwrites, as before.
     // readState and atomicWrite are synchronous with nothing awaited between them, so the
     // compare-and-write is atomic for this process.
-    const cur = readStateStrict(user.id);
+    // Postgres mode: read here, and written below only if the revision is still this one.
+    const cur = PG ? await PG.readStateDoc(user.id) : readStateStrict(user.id);
     if (cur === UNREADABLE) { console.error('state file unreadable for', user.id); return json(res, 503, { error: 'state unreadable' }); }
     const curRev = cur?._rev || 0;
     // `_rev` is a counter, so after the data directory went back in time (a restored backup, a
@@ -2505,6 +2574,16 @@ const routes = {
     let text;
     try { text = JSON.stringify(body.state); }
     catch (e) { if (e instanceof RangeError) return json(res, 400, { error: 'invalid state' }); throw e; }
+    if (PG) {
+      // Compare-and-set: UPDATE ... WHERE revision = curRev. Requests are already serialized, so
+      // this only ever fails if something wrote outside the API; the answer is then the same 409
+      // a stale baseRev gets, with the document as it is now, for the client to merge.
+      if (!(await PG.writeStateDoc(user.id, text, curRev, body.state._rev))) {
+        const now = await PG.readStateDoc(user.id);
+        return json(res, 409, { error: 'conflict', rev: now?._rev || 0, state: forClient(now) });
+      }
+      return json(res, 200, { ok: true, ts: body.state._ts || null, rev: curRev + 1, wid: body.state._wid });
+    }
     atomicWrite(stateFile(user.id), text);
     // The stat cache cannot see this write on its own: mtime granularity is 4 ms here (ext4 on
     // this kernel — 3901 of 3999 back-to-back same-size writes shared one timestamp), and a
@@ -2837,7 +2916,8 @@ const routes = {
   // Owner only: an admin who could clear it could erase the trace of what they did.
   'POST /api/admin/audit/clear': async (req, res) => {
     const admin = requireOwner(req, res); if (!admin) return;
-    try { fs.unlinkSync(auditFile); } catch { /* nothing logged yet */ }
+    if (PG) await PG.clearAudit();
+    else try { fs.unlinkSync(auditFile); } catch { /* nothing logged yet */ }
     auditCount = 0;
     audit(req, 'admin.audit.clear', { user: admin });
     json(res, 200, { ok: true });
@@ -2852,13 +2932,15 @@ const routes = {
   /* ---------- photos & videos ---------- */
   // Absent, not refusing, when MEDIA_UPLOADS=0: a 404 is what a server from before the feature
   // answers, and the client already treats that as "this server does not store them".
-  ...(MEDIA_ON ? mediaRoutes : {})
+  ...(MEDIA_ON ? mediaRoutes : {}),
+
+  ...(PG ? cronRoutes : {})
 };
 
 /* ---------- Coach: boot recovery, notifications, scheduled reviews ---------- */
 // A job that was running when the process died is not coming back; say so rather than leaving
 // a spinner that never resolves.
-coachJobs.recoverOnBoot();
+if (!PG) coachJobs.recoverOnBoot();
 // A ready proposal is the one Coach event worth a notification. Failures and "nothing to
 // change" stay silent on purpose (FR-38/E4).
 coachJobs.setProposalHook((uid, pending) => {
@@ -2870,8 +2952,11 @@ coachJobs.setProposalHook((uid, pending) => {
     tag: 'coach-proposal', url: '#/coach'
   });
 });
-startCadence({ users: () => db.users.filter(u => !u.disabled), userNow, skip: uid => !stateSummary(uid)?.consent });
-startWarmup();
+// Neither has a process to run in, in Postgres mode, where the Coach is off (COACH_DISABLED).
+if (!PG) {
+  startCadence({ users: () => db.users.filter(u => !u.disabled), userNow, skip: uid => !stateSummary(uid)?.consent });
+  startWarmup();
+}
 
 // node's requestTimeout is one number for every route, and it is half an hour (below) for the
 // sake of one: a video uploaded over a slow uplink. Every other request keeps node's old five
@@ -2897,7 +2982,7 @@ function bodyDeadline(req) {
 // The Capacitor WebView origins of the Android and iOS app.
 const APP_ORIGINS = new Set(['https://localhost', 'capacitor://localhost', 'http://localhost']);
 
-const server = http.createServer(async (req, res) => {
+async function handle(req, res) {
   bodyDeadline(req);
   // Same-origin (the deployed nginx-proxied web app) never triggers CORS, so this only matters
   // for the paired mobile app calling in from its own WebView origin. It carries no cookie
@@ -2982,7 +3067,44 @@ const server = http.createServer(async (req, res) => {
     console.error(key, e);
     if (!res.headersSent) json(res, 500, { error: 'server error' });
   }
-});
+}
+
+// The route a request is for, as `routes` names it — the unit of work (Postgres mode) asks before
+// the handler runs, to know what to load.
+function routeKey(req) {
+  let pathname;
+  try { pathname = new URL(req.url, 'http://x').pathname; } catch { return ''; }
+  return /^\/api\/media\/[0-9a-f]{64}$/.test(pathname) ? req.method + ' /api/media/{hash}' : req.method + ' ' + pathname;
+}
+// The documents a route reads synchronously (readState and friends), loaded for it in Postgres
+// mode. Every other route either reads none or reads its own with an await (/api/data).
+function statesFor(key, req, uid) {
+  if (key === 'POST /api/cron/tick') return db.users.filter(u => db.subs.some(s => s.userId === u.id)).map(u => u.id);
+  if (key === 'GET /api/admin/users') return 'all';
+  if (key === 'GET /api/admin/user') {
+    const id = new URL(req.url, 'http://x').searchParams.get('id');
+    return id ? [id] : [];
+  }
+  if (uid && (key === 'POST /api/push/test' || key === 'POST /api/push/rest-timer' || key === 'GET /api/nudge-check' ||
+              key === 'POST /api/media/sweep')) return [uid];
+  return [];
+}
+
+// The request handler. A host that brings its own HTTP server (Vercel, vercel/api.mjs) calls this;
+// run directly, this file serves it on PORT. In Postgres mode every request goes through the unit
+// of work (pg-store.js), which hands the handler the objects above filled from the database.
+export const handler = PG ? PG.unitOfWork({
+  maxBody: MAX_BODY,
+  routeKey,
+  statesFor,
+  sessionUserId: req => readSession(req)?.id || null,
+  getDb: () => db,
+  setDb: next => { db = next; },
+  maps: { challenges, pairings, presence, restTimers },
+  limiters: { AUTH_BURST, ADDR_FAILS, ACCOUNT_FAILS, FAIL_AUDIT, FAIL_AUDIT_ALL, PUSH_TESTS, REST_TIMER_SETS, MEDIA_BURST, MEDIA_SWEEPS }
+}, handle) : handle;
+const server = http.createServer(handler);
+
 // Node's default of 300 s for a whole request would answer 408 to a 40 MB video on a ~1 Mbit/s
 // uplink. Half an hour covers that; a stalled upload is cut much sooner by its own 60 s idle
 // timer in media.js, a client that never finishes its headers still meets headersTimeout, and
@@ -2993,4 +3115,7 @@ server.headersTimeout = 60000;
 // port that was actually bound: with PORT=0 the OS picks one, and a caller that did not choose it
 // (the tests spawn the server that way, and so does anyone running two instances on one box) has
 // no other way to learn it.
-server.listen(PORT, () => console.log(`gym-api on :${server.address().port} (rpID=${RP_ID}, origin=${ORIGIN})`));
+const realpath = f => { try { return fs.realpathSync(f); } catch { return path.resolve(f); } };
+if (process.argv[1] && realpath(process.argv[1]) === realpath(fileURLToPath(import.meta.url))) {
+  server.listen(PORT, () => console.log(`gym-api on :${server.address().port} (rpID=${RP_ID}, origin=${ORIGIN}${PG ? ', storage=postgres' : ''})`));
+}

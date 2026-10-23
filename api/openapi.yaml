@@ -2179,6 +2179,31 @@ paths:
               schema: { $ref: '#/components/schemas/Ok' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/cron/tick:
+    post:
+      tags: [push]
+      operationId: cronTick
+      summary: Run the timers (Postgres mode only)
+      description: >-
+        Only registered when the API runs on Postgres (`DATABASE_URL` set, the Vercel + Supabase
+        mode of docs/VERCEL_SUPABASE.md), where no process lives between requests to keep timers.
+        Sends every rest-timer push that is due, runs the workout-day reminder and missed-workout
+        nudge check, and prunes expired challenges, pairing codes, presence rows, counters and
+        audit rows past retention. Called by Supabase pg_cron every minute, and every ten seconds
+        while a rest timer is due. The credential is `Authorization: Bearer <CRON_SECRET>`; with
+        no CRON_SECRET of at least 16 characters set, every call is refused.
+      responses:
+        '200':
+          description: Done. `rest` is how many rest-timer pushes were sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  rest: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /api/activity:
     post:
       tags: [activity]
