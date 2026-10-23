@@ -54,6 +54,10 @@ function boundedMap(maxKeys, rank, keep = () => false) {
     },
     delete: k => m.delete(k),
     entries: () => m.entries(),
+    // The whole Map, in order, and back: how a store outside the process (api/pg-store.js) carries
+    // the counts from one request to the next where no process lives longer than a request.
+    dump: () => [...m.entries()].map(([k, v]) => [k, { ...v }]),
+    load(rows) { m.clear(); for (const [k, v] of rows) m.set(k, { ...v }); },
     get size() { return m.size; }
   };
 }
@@ -112,6 +116,8 @@ export function createBackoff({ free = 5, baseMs = MINUTE, maxMs = 60 * MINUTE, 
     sweep() {
       for (const [k, e] of map.entries()) if (!locked(e) && !fresh(e)) map.delete(k);
     },
+    snapshot: () => map.dump(),
+    restore: rows => map.load(rows),
     get size() { return map.size; }
   };
 }
@@ -131,6 +137,8 @@ export function createWindow({ max = 60, windowMs = MINUTE, maxKeys = 10000, now
     sweep() {
       for (const [k, e] of map.entries()) if (now() - e.start >= windowMs) map.delete(k);
     },
+    snapshot: () => map.dump(),
+    restore: rows => map.load(rows),
     get size() { return map.size; }
   };
 }
