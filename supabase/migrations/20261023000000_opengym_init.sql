@@ -1,8 +1,9 @@
 -- openGym on Postgres (Vercel + Supabase mode, api/pg-store.js).
 --
--- Every table is reached by the API alone, through DATABASE_URL (the Supabase pooler). Nothing
--- here is meant for the browser: RLS is on with no policy at all, and the PostgREST roles get no
--- grants, so the anon and authenticated keys can read and write nothing even if they leak.
+-- Every table is reached by the API alone, through DATABASE_URL (the Supabase pooler), as its own
+-- role (opengym_api, next migration). Nothing here is meant for the browser: RLS is on, the only
+-- policies are that role's, and the PostgREST roles get no grants, so the anon and authenticated
+-- keys can read and write nothing even if they leak.
 --
 -- `json`, not `jsonb`: the text is kept exactly as the API wrote it, key order included, the way
 -- the files kept it. Nothing here is queried by what is inside a record.
@@ -122,4 +123,4 @@ begin
     revoke all on all sequences in schema public from anon, authenticated;
   end if;
 end $$;
--- Not FORCE: the API connects as the tables' owner, which RLS without FORCE lets through.
+-- Not FORCE: the owner (migrations, the import script) is let through; opengym_api gets policies.
