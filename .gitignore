@@ -30,3 +30,8 @@ frontend/bundle-size.json
 
 # Local planning notes
 docs/superpowers/plans/
+
+# Vercel + Supabase mode (docs/VERCEL_SUPABASE.md): secrets and the build output
+.env.local
+.env.*.local
+.vercel/
