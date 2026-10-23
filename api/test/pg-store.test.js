@@ -61,7 +61,7 @@ function softPasskey() {
   };
 }
 
-let sql, dbUrl, dbName, admin, env;
+let sql, dbUrl, apiUrl, dbName, admin, env;
 before(async () => {
   if (skip) return;
   const { default: postgres } = await import('postgres');
@@ -71,10 +71,22 @@ before(async () => {
   const u = new URL(ADMIN_URL); u.pathname = '/' + dbName;
   dbUrl = u.toString();
   sql = postgres(dbUrl, { max: 2, onnotice: () => {} });
-  for (const f of fs.readdirSync(MIGRATIONS).sort()) await sql.unsafe(fs.readFileSync(path.join(MIGRATIONS, f), 'utf8'));
+  // The roles Supabase has, so the revokes in the migrations run as they will there.
+  await sql.unsafe(`do $$ begin
+    if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon; end if;
+    if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated; end if;
+  end $$`);
+  // pg_cron and pg_net are Supabase's; everything else is applied exactly as there.
+  for (const f of fs.readdirSync(MIGRATIONS).filter(f => !f.endsWith('_cron.sql')).sort()) await sql.unsafe(fs.readFileSync(path.join(MIGRATIONS, f), 'utf8'));
+  // The servers sign in as the API's own role, so a grant or policy missing from the migration
+  // fails these tests rather than the deployment.
+  const apiPassword = crypto.randomBytes(12).toString('hex');
+  await sql.unsafe(`alter role opengym_api password '${apiPassword}'`);
+  const api = new URL(dbUrl); api.username = 'opengym_api'; api.password = apiPassword;
+  apiUrl = api.toString();
   const vapid = JSON.parse(execFileSync(process.execPath, ['-e', "const w=require('web-push');process.stdout.write(JSON.stringify(w.generateVAPIDKeys()))"], { cwd: API }));
   env = {
-    DATABASE_URL: dbUrl, SESSION_SECRET: crypto.randomBytes(32).toString('hex'),
+    DATABASE_URL: apiUrl, SESSION_SECRET: crypto.randomBytes(32).toString('hex'),
     VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey, CRON_SECRET,
     ORIGIN, RP_ID: 'localhost', TRUST_PROXY: '1', COACH_DISABLED: '1', FIRST_USER_ADMIN: '1', AUDIT_LOG: '1'
   };
@@ -85,7 +97,7 @@ after(async () => {
   await admin.unsafe(`drop database if exists ${dbName} with (force)`);
   await admin.end();
 });
-const reset = () => sql.unsafe('truncate users, credentials, push_subs, invites, device_links, user_state, audit_log, challenges, pairings, rate_limits, presence, rest_timers restart identity cascade');
+const reset = () => sql.unsafe('truncate users, credentials, push_subs, invites, device_links, user_state, audit_log, challenges, pairings, rate_limits, presence, rest_timers, cron_config restart identity cascade');
 
 async function startServer(t, extra = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-pg-'));
@@ -344,4 +356,18 @@ test('scripts/vercel/import-data.mjs moves a ./data in, and the old cookies keep
   assert.deepEqual(data.body.state.workouts, [{ id: 'w', d: '2026-02-02' }]);
   assert.deepEqual((await h.req('GET', '/api/data/rev', { cookie })).body, { rev: 12, wid: 'w12' });
   assert.equal((await h.req('PUT', '/api/data', { cookie, body: { baseRev: 12, state: doc() } })).body.rev, 13);
+});
+
+test('the API tells pg_cron where its tick is, from its own ORIGIN and CRON_SECRET', { skip }, async t => {
+  await reset();
+  const h = await startServer(t, { ORIGIN: 'https://gym.example.com', RP_ID: 'gym.example.com' });
+  assert.equal((await h.req('GET', '/api/health')).status, 200);
+  const [row] = await sql`select tick_url, secret from cron_config`;
+  assert.equal(row.tick_url, 'https://gym.example.com/api/cron/tick');
+  assert.equal(row.secret, CRON_SECRET);
+  // The API's role reads and writes its tables and nothing it was not given.
+  const [{ ok }] = await sql`select has_table_privilege('opengym_api', 'user_state', 'update') as ok`;
+  assert.equal(ok, true);
+  const [{ anon }] = await sql`select has_table_privilege('anon', 'user_state', 'select') as anon`;
+  assert.equal(anon, false);
 });

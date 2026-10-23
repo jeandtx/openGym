@@ -129,6 +129,22 @@ const changes = (before, m) => ({
   set: [...m].filter(([k, v]) => before.get(k) !== JSON.stringify(v))
 });
 
+/* ---------- where pg_cron finds the tick ---------- */
+// The cron job (supabase/migrations/*_opengym_cron.sql) reads the tick's address and Bearer from
+// cron_config. The API writes them there itself, from its own ORIGIN and CRON_SECRET, on the
+// first request each instance serves — so the secret is set in one place (the host's variables)
+// and never copied by hand into the database. Only rewritten when it differs.
+let cronNoted = false;
+async function registerCron(t) {
+  const secret = String(process.env.CRON_SECRET || '');
+  const origin = String(process.env.ORIGIN || '').replace(/\/+$/, '');
+  if (secret.length < 16 || !/^https:\/\//.test(origin)) return true;   // nothing to call back
+  await t`insert into cron_config (id, tick_url, secret) values (1, ${origin + '/api/cron/tick'}, ${secret})
+          on conflict (id) do update set tick_url = excluded.tick_url, secret = excluded.secret, updated_at = now()
+          where cron_config.tick_url is distinct from excluded.tick_url or cron_config.secret is distinct from excluded.secret`;
+  return true;
+}
+
 /* ---------- the unit of work ---------- */
 let current = null;          // the request being served: { tx, states, audit, pending, auditRows }
 let queue = Promise.resolve();
@@ -257,6 +273,8 @@ async function serve(hooks, inner, req, res, buf) {
       if (locked) await t`select pg_advisory_xact_lock(${LOCK_KEY})`;
       current = { tx: t, states: new Map(), audit: [], pending: [], auditRows: null };
 
+      // In a savepoint: a database without cron_config (an older schema) must not fail the request.
+      if (!cronNoted) cronNoted = await t.savepoint(s => registerCron(s)).catch(e => { console.error('cron_config:', e.message); return true; });
       const db = await loadDb(t);
       const dbBefore = fingerprint(db);
       hooks.setDb(db);
