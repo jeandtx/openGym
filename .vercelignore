@@ -1,0 +1,11 @@
+# What the Vercel build does not need to see (scripts/vercel/build.mjs).
+frontend/android
+frontend/ios
+assets
+website
+helm
+kubernetes
+contrib
+mcp
+.gitlab
+**/node_modules
