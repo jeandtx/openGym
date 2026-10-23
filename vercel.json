@@ -1,7 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "installCommand": "echo 'dependencies are installed by scripts/vercel/build.mjs'",
-  "buildCommand": "node scripts/vercel/build.mjs",
-  "outputDirectory": ".vercel/output"
+  "builds": [
+    { "src": "package.json", "use": "@vercel/static-build" }
+  ]
 }

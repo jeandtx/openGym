@@ -6,9 +6,11 @@
 //   .vercel/output/config.json             /api/* -> that function, then the files, one origin
 //
 // Why not Vercel's zero-config: it turns every file under a root `api/` folder into its own
-// function, and this repository's api/ is a server, its modules and its tests. Renaming the
-// folder would make every upstream update a conflict, so the output is written here instead and
-// Vercel deploys it as it is.
+// function, and this repository's api/ is a server, its modules and its tests (past the Hobby
+// plan's 12 functions, the deployment is refused). Renaming the folder would make every upstream
+// update a conflict. So vercel.json lists one build explicitly — which switches the detection off —
+// and that build (@vercel/static-build, `npm run vercel-build`) runs this script and deploys the
+// .vercel/output it leaves as it is.
 //
 //   node scripts/vercel/build.mjs          (what vercel.json's buildCommand runs)
 //

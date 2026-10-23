@@ -102,8 +102,9 @@ régénère à chaque fois.
    L'éditeur SQL peut dépasser son délai sur la boucle de droits du deuxième fichier : on peut
    l'exécuter en plusieurs fois, les instructions sont idempotentes.
 2. Générer les secrets (ci-dessus) et exécuter `.vercel/db-verifier.sql` dans l'éditeur SQL.
-3. **Vercel** : importer le dépôt, sans framework. `vercel.json` donne la commande de build
-   (`node scripts/vercel/build.mjs`) et la sortie (`.vercel/output`). Renseigner les variables
+3. **Vercel** : importer le dépôt, sans framework. `vercel.json` déclare un seul build
+   (`@vercel/static-build`, qui lance `npm run vercel-build`, donc `scripts/vercel/build.mjs`) et
+   reprend tel quel le `.vercel/output` qu'il produit. Renseigner les variables
    ci-dessus pour l'environnement Production. Mettre la *Deployment Protection* sur
    « Preview » uniquement : la production doit être publique, pour le téléphone comme pour `pg_cron`.
 4. Pousser sur la branche de production. Le build :
@@ -118,8 +119,11 @@ régénère à chaque fois.
 ### Pourquoi pas la détection automatique de Vercel
 
 Vercel transforme chaque fichier d'un dossier racine `api/` en fonction séparée. Le dossier `api/`
-de ce dépôt contient un serveur, ses modules et ses tests. Le renommer créerait un conflit à chaque
-mise à jour de l'amont : le build écrit donc directement le format *Build Output API v3*.
+de ce dépôt contient un serveur, ses modules et ses tests : le premier déploiement a été refusé
+pour ça (« No more than 12 Serverless Functions … on the Hobby plan »). Le renommer créerait un
+conflit à chaque mise à jour de l'amont. `vercel.json` liste donc explicitement un seul build
+(`builds`), ce qui coupe la détection automatique, et ce build écrit directement le format
+*Build Output API v3*.
 
 ### Médias d'exercices
 

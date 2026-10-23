@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "js-yaml": "^4.1.0"
+  },
+  "scripts": {
+    "vercel-build": "node scripts/vercel/build.mjs"
   }
 }
