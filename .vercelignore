@@ -6,6 +6,7 @@ website
 helm
 kubernetes
 contrib
-mcp
+# mcp/ is needed: the function serves its HTTP endpoint at /api/mcp. Its tests are not.
+mcp/test
 .gitlab
 **/node_modules
