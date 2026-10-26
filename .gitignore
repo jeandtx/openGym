@@ -15,7 +15,9 @@ node_modules/
 *.log
 .DS_Store
 node_modules
-.claude/
+.claude/*
+# …except the project skills, which are part of the repo (the MCP monthly review).
+!.claude/skills/
 .agents/
 .superpowers/
 

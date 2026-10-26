@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "opengym": {
+      "command": "node",
+      "args": ["mcp/src/index.js"],
+      "env": {
+        "OPENGYM_URL": "${OPENGYM_URL:-https://opengym-jeandtx.vercel.app}",
+        "OPENGYM_TOKEN": "${OPENGYM_TOKEN:-}"
+      }
+    }
+  }
+}

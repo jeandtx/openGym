@@ -24,6 +24,7 @@ to install.
 | [Kubernetes](SELF_HOSTING_KUBERNETES.md) | You run a cluster instead of Docker Compose |
 | [AI coach](AI_COACH.md) | You're deciding whether to turn the coach on, and with which provider |
 | [MCP server](../mcp/README.md) | You want Claude Desktop, Cursor or another AI client to read your training history |
+| [MCP in Claude Code (FR)](MCP_CLAUDE_CODE.md) | This fork: the MCP server against the Vercel + Supabase instance, the monthly review and next week's plan |
 | [NixOS](NIX.md) | You run NixOS and want openGym native — flake packages and a NixOS module, no Docker |
 | [Security](../SECURITY.md) | You host it for other people, or want to report a vulnerability |
 

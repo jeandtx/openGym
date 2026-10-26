@@ -37,10 +37,10 @@ export const isoDate = () => z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YY
 // store load (useStore.js:54). The MCP server deliberately never calls it: http.js serves
 // several profiles from one process behind withRemoteState, so mutating the module-global
 // index would leak one profile's customs into another's reads.
-const customOf = (id, S) => (S.customEx || []).find(ex => ex.id === id)
+export const customOf = (id, S) => (S.customEx || []).find(ex => ex.id === id)
 // exOr's miss is a placeholder object, not null — callers that only need a name are fine
 // with it, callers feeding muscle resolution are NOT. Use customOf directly there.
-const exerciseOf = (id, S) => customOf(id, S) || exOr(id)
+export const exerciseOf = (id, S) => customOf(id, S) || exOr(id)
 // The session builder, though, reads each exercise's equipment and body part from that global
 // index, so preview_session built a custom leg lift with the small load step where the app (which
 // registers its customs) takes the larger one. It registers the profile's customs for the length
@@ -103,6 +103,25 @@ function prTable(S, formula) {
     }
   }
   return [...byId.values()].sort((a, b) => b.est - a.est)
+}
+
+/**
+ * Effective sets per muscle over `workouts` (muscles.js loadOfWorkouts), with the profile's own
+ * exercises resolved. loadOf() resolves each entry through EXIDX, which holds the catalogue only,
+ * so a custom exercise's sets score zero there. Attaching the custom itself lets loadOf's own
+ * `historical` branch resolve it. Only a *found* custom: exOr's miss placeholder carries no
+ * muscle metadata and no muscleSnapshot, so attaching that would displace the entry and silently
+ * zero a *deleted* custom, whose snapshot loadOf reads off the entry
+ * (muscles.js:245 → metadataOf, snapshot written at sheets.jsx:421-426).
+ */
+export function muscleLoadOf(S, workouts) {
+  return loadOfWorkouts(workouts.map(w => ({
+    ...w,
+    entries: (w.entries || []).map(e => {
+      const c = e.exercise ? null : customOf(e.id, S)
+      return c ? { ...e, exercise: c } : e
+    })
+  })))
 }
 
 /* ---------- the 8 tools ---------- */
@@ -480,19 +499,7 @@ export const muscleBalance = {
       : period === 'month' ? midnightDaysBack(29)
         : Number.NEGATIVE_INFINITY
     const workouts = (S.workouts || []).filter(w => workoutAt(w) >= cutoff)
-    // loadOf() resolves each entry through EXIDX, which holds the catalogue only, so a
-    // custom exercise's sets score zero here. Attaching the custom itself lets loadOf's own
-    // `historical` branch resolve it. Only a *found* custom: exOr's miss placeholder carries
-    // no muscle metadata and no muscleSnapshot, so attaching that would displace the entry
-    // and silently zero a *deleted* custom, whose snapshot loadOf reads off the entry
-    // (muscles.js:245 → metadataOf, snapshot written at sheets.jsx:421-426).
-    const load = loadOfWorkouts(workouts.map(w => ({
-      ...w,
-      entries: (w.entries || []).map(e => {
-        const c = e.exercise ? null : customOf(e.id, S)
-        return c ? { ...e, exercise: c } : e
-      })
-    })))
+    const load = muscleLoadOf(S, workouts)
     const { worked, missed } = rankOf(load)
     const levels = levelsOf(load)
     return {
@@ -676,7 +683,7 @@ export const TOOLS = [
   listRoutines, getRoutine, previewSession, getWeekPlan, listWorkouts, getWorkout, getBodyweight, estimate1rm, muscleBalance
 ]
 
-function noState() {
+export function noState() {
   return {
     error: 'no synced state yet — sign in at least once from a device so the openGym api can save a state file for this profile',
     unit: 'kg'

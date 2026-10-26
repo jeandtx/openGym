@@ -1,5 +1,6 @@
 /* The one way the MCP server writes: through the openGym api, as the app's own devices do.
-   Reads stay on the data directory (state.js). A write goes over HTTP because PUT /api/data is
+   Reads come from the data directory, or from the same api when there is none to read
+   (state.js, server mode). A write goes over HTTP because PUT /api/data is
    the only place a profile's document is compared and written in one step — a second process
    renaming the same file underneath it has no lock to take, so a phone's push landing in between
    would be lost — and because that route is what stamps a change so every device's next merge
@@ -41,7 +42,7 @@ export function apiConfig(env = process.env) {
   const url = (env.OPENGYM_URL || '').trim()
   const token = (env.OPENGYM_TOKEN || '').trim()
   if (!url || !token) {
-    throw fail('ENOCONFIG', 'logging workouts writes through your openGym server: set OPENGYM_URL and OPENGYM_TOKEN in this MCP server\'s config (mcp/README.md, "Logging workouts")')
+    throw fail('ENOCONFIG', 'this writes through your openGym server: set OPENGYM_URL and OPENGYM_TOKEN in this MCP server\'s config (mcp/README.md, "Logging workouts")')
   }
   if (!TOKEN_CHARS.test(token)) {
     throw fail('ENOCONFIG', 'OPENGYM_TOKEN has characters a token never has (a line break or space from copying it?): paste it again as one line')

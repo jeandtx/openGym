@@ -52,3 +52,21 @@ export function logWeighIn(s, w, at = Date.now()) {
   s.bodyweight.sort((a, b) => (a.d < b.d ? -1 : 1))
   return true
 }
+
+/**
+ * A weigh-in for day `d` (YYYY-MM-DD), much the same way: it replaces that day's, the list stays
+ * sorted, `t` is when it was typed (`at`). For a weigh-in told after the fact (the MCP's
+ * log_bodyweight), whose day is not the day it is typed on. Returns false for a weight or a day
+ * that is not one, 'same' when the day already holds that weight (nothing is touched), else
+ * 'added' or 'replaced'.
+ */
+export function weighInOn(s, d, w, at = Date.now()) {
+  const n = Math.round(Number(w) * 10) / 10
+  if (!(n > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(d))) return false
+  if (!Array.isArray(s.bodyweight)) s.bodyweight = []
+  const ex = s.bodyweight.find(b => b.d === d)
+  if (ex && Number(ex.w) === n) return 'same'
+  if (ex) { ex.w = n; ex.t = at } else s.bodyweight.push({ d, w: n, t: at })
+  s.bodyweight.sort((a, b) => (a.d < b.d ? -1 : 1))
+  return ex ? 'replaced' : 'added'
+}

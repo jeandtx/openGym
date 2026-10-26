@@ -18,7 +18,8 @@ api/       backend — server.js (Node, no framework), deps: @simplewebauthn/ser
            coach/ is the optional AI coach; openapi.yaml documents every route.
 web/       multi-stage Dockerfile (builds frontend → nginx) + nginx.conf.template (serves app, proxies /api).
 mcp/       optional MCP server — stdio bridge exposing a user's workouts/1RM/muscle balance to
-           LLM clients (Claude Desktop, Cursor…), plus `log_workout` (writes through the api).
+           LLM clients (Claude Desktop, Claude Code, Cursor…), reviews (`training_review`), and
+           write tools (workout, weigh-in, plan changes, next week) that go through the api.
            Not part of the Docker build; only runs when an LLM client spawns it.
 media/     exercise img/gif, gitignored, fetched at runtime by the `media` compose service.
 website/   static project site (plain HTML/CSS/JS), deployed separately.
@@ -113,11 +114,17 @@ Stdio MCP bridge (`@modelcontextprotocol/sdk`) that lets an LLM client read a si
 routines/workouts/body-weight/1RM/muscle-balance directly from the same `DATA_DIR` the API
 writes to — no network call, no extra container. `state.js` loads/derives the data, `tools.js`
 defines the read tools (zod-validated schemas), `labels.js` maps internal keys to
-human-readable labels, `index.js` wires it together. The one write tool, `log_workout`
-(`write-tools.js`), never writes the file: it builds the workout with
-`frontend/src/lib/log-workout.js` and saves it with `PUT /api/data` over a paired-session token
-(`api-client.js`, `scripts/pair.mjs`), the way a device syncs. See `mcp/README.md` for the client-config
-side (Claude Desktop / Cursor).
+human-readable labels, `index.js` wires it together. With `OPENGYM_URL` and no `OPENGYM_DATA`
+(server mode, for the Vercel + Supabase deploy) `state.js` reads the profile through
+`GET /api/data` instead, re-fetching only when `GET /api/data/rev` moved. `review-tools.js` holds
+`training_review` / `recovery_status` / `find_exercise`. The write tools never write the file:
+`log_workout` (`write-tools.js`) builds the workout with `frontend/src/lib/log-workout.js`, and
+`plan-tools.js` (`log_bodyweight`, `apply_plan_changes` via `frontend/src/lib/coach.js`
+applyChangeSet, `revert_last_plan_change`, `schedule_week` writing `S.queue`) goes through
+`profile-write.js` commitProfile; all save with `PUT /api/data` over a paired-session token
+(`api-client.js`, `scripts/pair.mjs`), the way a device syncs. See `mcp/README.md` for the
+client-config side (Claude Desktop / Claude Code / Cursor), and `.claude/skills/bilan-mensuel/`
+for the monthly review workflow.
 
 ### Passkeys and self-hosting constraints
 

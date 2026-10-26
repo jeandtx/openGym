@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { weeklyWeights, weighInAt } from './bodyweight.js'
+import { weeklyWeights, weighInAt, weighInOn } from './bodyweight.js'
 
 // Discord 'Weight': every weigh-in, week by week, with the week's mean.
 describe('weeklyWeights', () => {
@@ -54,5 +54,29 @@ describe('weighInAt', () => {
 
   it('puts one with no time at noon of its day', () => {
     expect(weighInAt({ d: '2026-03-02', w: 84 })).toBe(at('2026-03-02T12:00:00'))
+  })
+})
+
+// The MCP's log_bodyweight: a weigh-in told for a given day, not the day it is typed on.
+describe('weighInOn', () => {
+  const at = new Date('2026-10-26T09:00:00').getTime()
+
+  it('adds the day in order, replaces a correction, and leaves the same weight alone', () => {
+    const s = { bodyweight: [{ d: '2026-10-20', w: 80, t: 1 }, { d: '2026-10-24', w: 79.4, t: 2 }] }
+    expect(weighInOn(s, '2026-10-22', 79.84, at)).toBe('added')
+    expect(s.bodyweight.map(b => b.d)).toEqual(['2026-10-20', '2026-10-22', '2026-10-24'])
+    expect(s.bodyweight[1]).toEqual({ d: '2026-10-22', w: 79.8, t: at })
+    expect(weighInOn(s, '2026-10-24', 79.2, at)).toBe('replaced')
+    expect(s.bodyweight[2]).toEqual({ d: '2026-10-24', w: 79.2, t: at })
+    expect(weighInOn(s, '2026-10-20', 80, at)).toBe('same')
+    expect(s.bodyweight[0].t).toBe(1)
+  })
+
+  it('refuses a weight or a day that is not one, and starts a missing list', () => {
+    const s = {}
+    expect(weighInOn(s, '2026-10-22', 0, at)).toBe(false)
+    expect(weighInOn(s, '22/10/2026', 80, at)).toBe(false)
+    expect(weighInOn(s, '2026-10-22', 80, at)).toBe('added')
+    expect(s.bodyweight).toEqual([{ d: '2026-10-22', w: 80, t: at }])
   })
 })
