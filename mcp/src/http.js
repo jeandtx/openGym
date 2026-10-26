@@ -5,7 +5,8 @@
        --header "Authorization: Bearer <token>"
 
    The token is a paired session, the same kind the phone app holds (Settings → Account →
-   "Connect Claude" mints one). Nothing is checked here beyond its shape: every read and write
+   "Connect Claude" mints one), or one a client got through OAuth (api/oauth.js): a claude.ai
+   connector is given only this address, and the 401 below tells it where to sign in. Nothing is checked here beyond its shape: every read and write
    goes through the api with it (state.js server mode, profile-write.js), so the api's own
    session check is the one that decides — an expired token or "Sign out everywhere" answers
    401 on the first call, and a request can only ever see the profile its token signs in to.
@@ -28,7 +29,10 @@ const send = (res, status, body, headers = {}) => {
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers })
   res.end(JSON.stringify(body))
 }
-const unauthorized = (res, why) => send(res, 401, { error: 'invalid_token', error_description: why }, { 'www-authenticate': 'Bearer realm="openGym"' })
+// resource_metadata points an OAuth client (a claude.ai connector) at the api's discovery document,
+// from which it registers and signs the user in (api/oauth.js). A client with a token ignores it.
+const unauthorized = (res, base, why) => send(res, 401, { error: 'invalid_token', error_description: why },
+  { 'www-authenticate': `Bearer realm="openGym", resource_metadata="${base}/.well-known/oauth-protected-resource/api/mcp"` })
 
 async function readBody(req) {
   const chunks = []
@@ -52,7 +56,7 @@ export function createHandler({ base, fetchImpl } = {}) {
     // and never queued, since a stream opened here would hold the one-at-a-time line forever.
     if (req.method !== 'POST') return send(res, 405, { error: 'POST only: this endpoint keeps no stream or session' }, { allow: 'POST' })
     const m = TOKEN.exec(req.headers.authorization || '')
-    if (!m) return unauthorized(res, 'send your openGym token as "Authorization: Bearer <token>" (Settings → Account → Connect Claude)')
+    if (!m) return unauthorized(res, base, 'send your openGym token as "Authorization: Bearer <token>" (Settings → Account → Connect Claude)')
     let body
     try { body = await readBody(req) } catch (e) { return send(res, e.status || 400, { error: e.message }) }
     const env = { OPENGYM_URL: base, OPENGYM_TOKEN: m[1] }
@@ -62,7 +66,7 @@ export function createHandler({ base, fetchImpl } = {}) {
         // Whose token this is, before anything else: a refused one is the client's to fix (a
         // 401 it can act on), not a tool error inside a 200.
         try { await refresh({ env, fetchImpl }) } catch (e) {
-          if (e.code === 'EAUTH') return unauthorized(res, 'the openGym server did not accept this token: it expired or was signed out everywhere. Make a new one in Settings → Account → Connect Claude.')
+          if (e.code === 'EAUTH') return unauthorized(res, base, 'the openGym server did not accept this token: it expired or was signed out everywhere. Make a new one in Settings → Account → Connect Claude.')
           return send(res, 502, { error: `${e.code || 'ERROR'}: ${e.message}` })
         }
         const server = buildServer({ env, fetchImpl })

@@ -38,6 +38,7 @@ import { effectiveRoutineId } from './queue.js';
 import { stampPut } from './sync-stamps.js';
 import { atomicWrite as durableWrite } from './durable.js';
 import { excusedOn, nudgeFor, nudgeWindowOpen, toneOf } from './nudge.js';
+import * as oauth from './oauth.js';
 
 // Vercel + Supabase mode (docs/VERCEL_SUPABASE.md): with DATABASE_URL set, every record lives in
 // Postgres (pg-store.js) and each request is one transaction, since no process outlives a
@@ -771,7 +772,11 @@ const clearCookie = COOKIE === LEGACY_COOKIE
 // The password routes are deliberately NOT exempt. A name and a password are a credential too,
 // but one a hostile page can know — its own — so an exempt POST /api/login/password would let
 // any site sign a visitor into the attacker's account and collect what they log (login CSRF).
-const CSRF_EXEMPT = new Set(['POST /api/pair/redeem']);
+// The OAuth token and registration endpoints are the same kind: claude.ai's servers call them, the
+// code and its PKCE verifier (or the refresh token) in the body are the credential, and neither
+// ever reads the cookie. The consent form (POST /api/oauth/authorize) is not exempt: it acts on
+// the cookie, so it has to come from this origin.
+const CSRF_EXEMPT = new Set(['POST /api/pair/redeem', 'POST /api/oauth/token', 'POST /api/oauth/register']);
 // The routes that answer to the credential in the body and never to a Bearer. No Bearer is the
 // credential that acts there, so none buys the shortcut below: any valid token would do, the
 // attacker's own included.
@@ -862,6 +867,34 @@ function makePairCode() {
 }
 if (!PG) setInterval(() => { for (const [k, v] of pairings) if (v.exp < Date.now()) pairings.delete(k); }, 60000).unref();
 
+// ---------- OAuth for the MCP endpoint (oauth.js) ----------
+// A claude.ai connector signs in this way. Its authorization codes sit in `pairings` too, keyed
+// `oauth:…` and marked `oauth`, so they are one-shot, expire in five minutes, persist in Postgres
+// mode and go with the account's other codes on "Sign out everywhere".
+const OAUTH = oauth.createOAuth({ sign, verifySig });
+const OAUTH_ISSUER = ORIGIN.replace(/\/+$/, '');
+function oauthAuthorize(req, res, q, user, decision) {
+  const a = OAUTH.authorizeRequest(q);
+  const html = (status, body, to) => { res.writeHead(status, oauth.pageHeaders(to)); res.end(body); };
+  // An unknown client or a redirect it never registered is told to the user, never redirected to.
+  if (a.fatal) return html(400, oauth.errorPage(a.fatal));
+  const back = params => {
+    res.writeHead(302, { Location: oauth.redirectWith(a.redirectUri, { ...params, state: a.state, iss: OAUTH_ISSUER }), 'Cache-Control': 'no-store' });
+    res.end();
+  };
+  if (a.error) return back({ error: a.error, error_description: a.description });
+  if (!user) {
+    const again = new URLSearchParams({ client_id: a.clientId, redirect_uri: a.redirectUri, state: a.state, response_type: 'code', code_challenge: a.codeChallenge, code_challenge_method: 'S256' });
+    return html(200, oauth.signInPage('/api/oauth/authorize?' + again), a.redirectUri);
+  }
+  if (!decision) return html(200, oauth.consentPage(a, user), a.redirectUri);
+  if (decision !== 'allow') { audit(req, 'auth.oauth.deny', { user }); return back({ error: 'access_denied' }); }
+  const code = oauth.newCode();
+  pairings.set(code, { uid: user.id, exp: Date.now() + oauth.CODE_TTL_MS, oauth: { c: a.clientId, r: a.redirectUri, cc: a.codeChallenge } });
+  audit(req, 'auth.oauth.grant', { user, msg: a.client.name });
+  back({ code });
+}
+
 /* ---------- helpers ---------- */
 function json(res, code, obj, extraHeaders) {
   const body = JSON.stringify(obj);
@@ -875,11 +908,11 @@ function json(res, code, obj, extraHeaders) {
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
-function readBody(req) {
+function readBody(req, opts) {
   // Postgres mode: the unit of work has read the body already, before its transaction opened.
   if (req.bufferedBody) {
     const { chunks, over } = req.bufferedBody;
-    return over ? Promise.reject(new HttpError(413, 'body too large')) : parseBody(req, chunks);
+    return over ? Promise.reject(new HttpError(413, 'body too large')) : parseBody(req, chunks, opts);
   }
   return new Promise((resolve, reject) => {
     let size = 0, over = false; const chunks = [];
@@ -904,7 +937,7 @@ function readBody(req) {
     });
     req.on('end', () => {
       if (over) return;
-      parseBody(req, chunks).then(resolve, reject);
+      parseBody(req, chunks, opts).then(resolve, reject);
     });
     // A browser hanging up mid-body — which is what pagehide does to an in-flight sync — is not
     // the caller getting a request wrong, it is nobody being left to answer. Marked so the
@@ -912,8 +945,14 @@ function readBody(req) {
     req.on('error', e => reject(Object.assign(e, { clientGone: true })));
   });
 }
-async function parseBody(req, chunks) {
+// `form`: the OAuth routes, which RFC 6749 has take application/x-www-form-urlencoded. Each of
+// them either reads its credential from the body alone (token, register) or is a form the
+// consent page posts to itself, which csrfOk holds to this origin like any other cookie route.
+async function parseBody(req, chunks, { form = false } = {}) {
   if (!chunks.length) return {};
+  if (form && /^application\/x-www-form-urlencoded\s*(;|$)/i.test(req.headers['content-type'] || '')) {
+    return Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString('utf8')));
+  }
   // A body has to say it is JSON. The three types a form can send, and the ones a no-cors
   // fetch can send, are exactly the ones that need no CORS preflight; parsing them anyway
   // let another site's form reach any route that reads a body, and on the passkey sign-in
@@ -2409,7 +2448,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'not signed in' });
     // One live code per profile: the newest is the one on screen. Keeping every code minted
     // let one session grow this Map without limit for five minutes at a time.
-    for (const [k, v] of pairings) if (v.uid === user.id) pairings.delete(k);
+    for (const [k, v] of pairings) if (v.uid === user.id && !v.oauth) pairings.delete(k);
     const code = makePairCode();
     pairings.set(code, { uid: user.id, exp: Date.now() + 5 * 60000 });
     audit(req, 'auth.pair.create', { user });
@@ -2434,6 +2473,55 @@ const routes = {
     }
     audit(req, 'auth.pair.ok', { user });
     json(res, 200, { token: makeSession(user), user: publicUser(user) });
+  },
+
+  // OAuth for the MCP endpoint (oauthAuthorize above, oauth.js): discovery, registration, the
+  // consent page and the token endpoint. The two well-known documents sit outside /api; the
+  // Vercel routes send them here (scripts/vercel/build.mjs).
+  'GET /.well-known/oauth-protected-resource': async (req, res) => json(res, 200, oauth.metadata(OAUTH_ISSUER).resource),
+  'GET /.well-known/oauth-protected-resource/api/mcp': async (req, res) => json(res, 200, oauth.metadata(OAUTH_ISSUER).resource),
+  'GET /.well-known/oauth-authorization-server': async (req, res) => json(res, 200, oauth.metadata(OAUTH_ISSUER).server),
+  'POST /api/oauth/register': async (req, res) => {
+    const out = OAUTH.register(await readBody(req, { form: true }));
+    json(res, out.error ? 400 : 201, out);
+  },
+  'GET /api/oauth/authorize': async (req, res) => {
+    oauthAuthorize(req, res, Object.fromEntries(new URL(req.url, 'http://x').searchParams), readSession(req), null);
+  },
+  'POST /api/oauth/authorize': async (req, res) => {
+    const body = await readBody(req, { form: true });
+    oauthAuthorize(req, res, body, readSession(req), body.decision === 'allow' ? 'allow' : 'deny');
+  },
+  // The access token is a paired session like the phone's; the refresh token outlives it (twice
+  // SESSION_DAYS) so a client that refreshes only once it is refused still can, and is replaced on
+  // every use. Both stop at "Sign out everywhere": the session version is in each of them.
+  'POST /api/oauth/token': async (req, res) => {
+    const body = await readBody(req, { form: true });
+    const clientId = text(body.client_id);
+    let user = null;
+    if (body.grant_type === 'authorization_code') {
+      const key = text(body.code);
+      const p = key.startsWith(oauth.CODE_PREFIX) ? pairings.get(key) : null;
+      if (p) pairings.delete(key);
+      if (p?.oauth && p.exp >= Date.now() && p.oauth.c === clientId && p.oauth.r === text(body.redirect_uri)
+          && oauth.pkceOk(text(body.code_verifier), p.oauth.cc)) user = db.users.find(u => u.id === p.uid) || null;
+    } else if (body.grant_type === 'refresh_token') {
+      const r = OAUTH.readRefresh(text(body.refresh_token), clientId);
+      user = (r && db.users.find(u => u.id === r.uid)) || null;
+      if (user && r.sv !== sessionVersion(user)) user = null;
+    } else {
+      return json(res, 400, { error: 'unsupported_grant_type' });
+    }
+    if (!user || user.disabled) {
+      auditFail(req, 'auth.oauth.fail', { ok: false, msg: body.grant_type });
+      return json(res, 400, { error: 'invalid_grant' });
+    }
+    json(res, 200, {
+      access_token: makeSession(user),
+      token_type: 'Bearer',
+      expires_in: SESSION_DAYS * 86400,
+      refresh_token: OAUTH.refreshToken(user, clientId, SESSION_DAYS * 2)
+    });
   },
 
   // Absent entirely while PASSWORD_LOGIN is off, so each of them is a plain 404.

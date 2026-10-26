@@ -709,6 +709,75 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: "invalid or expired code", code: "pair-invalid" }
 
+  /api/oauth/register:
+    post:
+      tags: [pairing]
+      operationId: oauthRegister
+      summary: Register an OAuth client (MCP connectors)
+      description: |
+        Dynamic client registration (RFC 7591) for the MCP endpoint's OAuth sign-in, which a
+        claude.ai connector uses. Public clients only (PKCE, no secret). Nothing is stored: the
+        returned `client_id` is the registration, signed. Discovery documents are served at
+        `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource`.
+        CSRF-exempt.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                redirect_uris:
+                  type: array
+                  items: { type: string }
+                  description: 1 to 5; https, or http on a loopback address.
+                client_name: { type: string }
+      responses:
+        '201': { description: Registered; the body carries `client_id`. }
+        '400': { description: "`invalid_redirect_uri`." }
+
+  /api/oauth/authorize:
+    get:
+      tags: [pairing]
+      operationId: oauthAuthorize
+      summary: OAuth consent page
+      description: |
+        Authorization-code request (`response_type=code`, PKCE `S256` required). An HTML page:
+        the consent prompt for the signed-in user (session cookie), or a prompt to sign in first.
+        An unknown client or unregistered `redirect_uri` is shown as an error, never redirected to.
+      security: []
+      responses:
+        '200': { description: The consent (or sign-in) page, text/html. }
+        '302': { description: Back to the client's redirect_uri with an `error`. }
+        '400': { description: Unknown client or redirect_uri, text/html. }
+    post:
+      tags: [pairing]
+      operationId: oauthDecide
+      summary: Allow or deny on the consent page
+      description: |
+        The consent page's form (application/x-www-form-urlencoded), the request's parameters plus
+        `decision=allow|deny`. Acts on the session cookie, so same-origin only. Allow redirects to
+        the client with a one-shot `code` (5 minutes); deny with `error=access_denied`.
+      responses:
+        '302': { description: Back to the client's redirect_uri. }
+
+  /api/oauth/token:
+    post:
+      tags: [pairing]
+      operationId: oauthToken
+      summary: Exchange an OAuth code or refresh token
+      description: |
+        `grant_type=authorization_code` (with `code`, `redirect_uri`, `client_id`, `code_verifier`)
+        or `grant_type=refresh_token` (with `refresh_token`, `client_id`), form-encoded or JSON.
+        The access token is a paired session (valid for SESSION_DAYS), the refresh token lasts
+        twice that and is replaced on each use; "Sign out everywhere" ends both. CSRF-exempt.
+      security: []
+      responses:
+        '200': { description: "`access_token`, `token_type`, `expires_in`, `refresh_token`." }
+        '400': { description: "`invalid_grant` or `unsupported_grant_type`." }
+
   /api/login/password:
     post:
       tags: [password]

@@ -37,9 +37,24 @@ La commande contient une **connexion complète à ton profil** : garde-la pour t
 `SESSION_DAYS` (90 jours par défaut), et **« Se déconnecter partout »** la révoque. Il suffit
 ensuite d'en créer une nouvelle.
 
-Ce point d'accès sert le Claude Code (et tout client MCP qui accepte un en-tête). Les
-« connecteurs » de claude.ai et de Claude Desktop demandent une connexion OAuth, que ce point
-d'accès n'a pas (pour ça, voir la PR amont DuarteSantos8/openGym#781).
+## Dans claude.ai (connecteur, OAuth)
+
+Les connecteurs de claude.ai (et de l'onglet Chat de Claude Desktop) n'acceptent pas d'en-tête :
+ils se connectent en OAuth, que le même point d'accès propose (`api/oauth.js`).
+
+1. Dans claude.ai : **Paramètres → Connecteurs → Ajouter un connecteur personnalisé**.
+2. Nom `opengym`, URL `https://opengym-jeandtx.vercel.app/api/mcp`, rien d'autre (pas de Client ID).
+3. **Se connecter** : une page openGym s'ouvre et demande d'autoriser Claude. Il faut être
+   connecté à openGym dans ce navigateur ; sinon, la page propose d'ouvrir l'app, de s'y
+   connecter, puis de revenir et de continuer.
+
+Le jeton obtenu est une session appairée comme les autres (`SESSION_DAYS`), renouvelée par
+claude.ai avec un jeton de rafraîchissement. **« Se déconnecter partout »** coupe les deux ; il
+suffit ensuite de se reconnecter depuis Paramètres → Connecteurs.
+
+Ce qui sert à la découverte : un 401 de `/api/mcp` pointe vers
+`/.well-known/oauth-protected-resource/api/mcp`, qui renvoie vers
+`/.well-known/oauth-authorization-server` (enregistrement dynamique, code + PKCE S256).
 
 ## En local (stdio)
 

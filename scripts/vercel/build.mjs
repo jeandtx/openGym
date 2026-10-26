@@ -113,6 +113,8 @@ fs.writeFileSync(path.join(OUT, 'config.json'), JSON.stringify({
     // Everything under /api goes to the one function, with its path untouched (server.js routes
     // on req.url). Before the filesystem, so no static file can shadow an API route.
     { src: '^/api(/.*)?$', dest: '/api', check: false },
+    // OAuth discovery for the MCP endpoint (api/oauth.js), which the spec fixes at the root.
+    { src: '^/\\.well-known/oauth-(authorization-server|protected-resource)(/.*)?$', dest: '/api', check: false },
     { src: '^/exercise-media/.+\\.(webp|mp4|png|jpg|gif)$', headers: { ...security, 'Cross-Origin-Resource-Policy': 'same-origin', 'Cache-Control': 'public, max-age=2592000, immutable' }, continue: true },
     { src: '^/.*\\.(js|css|json|html)$', headers: { ...security, 'Cache-Control': 'no-cache, must-revalidate' }, continue: true },
     { src: '^/(.*\\.(png|ico|svg|woff2?|webp))$', headers: { ...security, 'Cache-Control': 'public, max-age=2592000, immutable' }, continue: true },
