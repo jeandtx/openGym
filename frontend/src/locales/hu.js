@@ -2417,4 +2417,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'Ezen az eszközön 1 edzés van, amely nincs ebben a mentésben. A csere törli.',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'Ezen az eszközön {0} edzés van, amely nincs ebben a mentésben. A csere törli őket.',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'Claude csatlakoztatása',
+  'Use your training in Claude Code: reviews, plans, logging.': 'Az edzésed a Claude Code-ban: összegzések, tervek, rögzítés.',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'Lehetővé teszi, hogy a Claude Code olvassa az edzéseidet, és a beleegyezéseddel edzéseket rögzítsen és módosítsa a tervedet. Futtasd ezt a parancsot egyszer egy terminálban a számítógépeden.',
+  'Create the command': 'Parancs létrehozása',
+  'Copy command': 'Parancs másolása',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'A parancs egy bejelentkezést tartalmaz a profilodba: tartsd titokban. A „Kijelentkezés mindenhonnan” visszavonja.',
+  'Could not create a token': 'Nem sikerült tokent létrehozni',
 }

@@ -197,6 +197,17 @@ claude mcp add opengym -s user \
   1RM, PRs and the muscle map, and like any freestyle session it can inform a routine that has
   no history of its own, but it does not tick off a planned day or a coach week's session.
 
+### Over HTTP (`src/http.js`)
+
+The same tools over Streamable HTTP, stateless, JSON responses: `createHandler({ base })` is a
+node `(req, res)` handler. Each request carries `Authorization: Bearer <paired-session token>`
+and is served in server mode against `base` with that token, so the api's own session check is
+the one that decides, and a request only ever sees its token's profile. This fork's Vercel
+function serves it at `/api/mcp` (`scripts/vercel/api-entry.mjs`); Settings → Account → Connect
+Claude mints the token and the `claude mcp add --transport http …` command. Requests one process
+serves run one after the other (the state module holds one profile at a time). No OAuth: a
+client that cannot send a header (claude.ai connectors) cannot use it.
+
 ## Reviews and planning
 
 The review tools put a block of training on the table in one call, so a monthly check-in does

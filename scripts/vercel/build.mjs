@@ -2,7 +2,8 @@
 // Builds openGym for Vercel as Build Output API v3 (docs/VERCEL_SUPABASE.md):
 //
 //   .vercel/output/static/                 the Vite build, plus exercise-media/ from catalogue/media
-//   .vercel/output/functions/api.func/     ONE Node function: api/server.js bundled with esbuild
+//   .vercel/output/functions/api.func/     ONE Node function: api/server.js bundled with esbuild,
+//                                          plus the MCP endpoint at /api/mcp (mcp/src/http.js)
 //   .vercel/output/config.json             /api/* -> that function, then the files, one origin
 //
 // Why not Vercel's zero-config: it turns every file under a root `api/` folder into its own
@@ -45,6 +46,9 @@ npm(['install', '--no-package-lock', `esbuild@${ESBUILD}`, `postgres@${pgVersion
 const fresh = dir => process.env.VERCEL || !fs.existsSync(path.join(ROOT, dir, 'node_modules'));
 step('api dependencies (no Coach runtime: the optional Agent SDK is half a gigabyte and off here)');
 if (fresh('api')) npm(['ci', '--omit=dev', '--omit=optional'], path.join(ROOT, 'api'));
+
+step('mcp dependencies (the MCP SDK and zod, bundled into the function for /api/mcp)');
+if (fresh('mcp')) npm(['ci', '--omit=dev', '--ignore-scripts'], path.join(ROOT, 'mcp'));
 
 step('frontend');
 if (fresh('frontend')) npm(['ci', '--ignore-scripts'], path.join(ROOT, 'frontend'));

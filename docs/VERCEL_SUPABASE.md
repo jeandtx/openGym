@@ -109,7 +109,8 @@ régénère à chaque fois.
    « Preview » uniquement : la production doit être publique, pour le téléphone comme pour `pg_cron`.
 4. Pousser sur la branche de production. Le build :
    - compile le front (Vite) et copie `catalogue/media` dans `static/exercise-media/` ;
-   - bundle `api/server.js` avec esbuild en **une seule** fonction (`functions/api.func`) ;
+   - bundle `api/server.js` avec esbuild en **une seule** fonction (`functions/api.func`), qui
+     sert aussi le MCP sur `/api/mcp` (`mcp/src/http.js`, `docs/MCP_CLAUDE_CODE.md`) ;
    - écrit les routes : `/api/*` vers la fonction, puis les fichiers, avec les en-têtes et la CSP
      du conteneur web (lue dans `web/Dockerfile`).
 5. Ouvrir l'URL, créer **ton** profil (il devient admin), puis mettre `INVITE_ONLY=1` et redéployer.

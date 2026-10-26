@@ -2493,4 +2493,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'এই ডিভাইসে ১টি ওয়ার্কআউট আছে যা এই ব্যাকআপে নেই। প্রতিস্থাপন করলে এটি মুছে যাবে।',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'এই ডিভাইসে {0}টি ওয়ার্কআউট আছে যা এই ব্যাকআপে নেই। প্রতিস্থাপন করলে এগুলো মুছে যাবে।',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'Claude সংযুক্ত করুন',
+  'Use your training in Claude Code: reviews, plans, logging.': 'Claude Code-এ আপনার ট্রেনিং: পর্যালোচনা, পরিকল্পনা, লগ করা।',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'Claude Code-কে আপনার ট্রেনিং পড়তে দেয় এবং আপনি রাজি হলে ওয়ার্কআউট লগ করতে ও আপনার পরিকল্পনা বদলাতে দেয়। আপনার কম্পিউটারের টার্মিনালে এই কমান্ডটি একবার চালান।',
+  'Create the command': 'কমান্ড তৈরি করুন',
+  'Copy command': 'কমান্ড কপি করুন',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'কমান্ডে আপনার প্রোফাইলের একটি সাইন-ইন আছে: এটি গোপন রাখুন। «সব জায়গা থেকে সাইন আউট» এটি বাতিল করে।',
+  'Could not create a token': 'টোকেন তৈরি করা যায়নি',
 }

@@ -926,6 +926,8 @@ export default function Settings({ page = null, find = null, via = null, entryKe
           <DeviceLinkRow state={passkeys.st} />
           <Row icon="qr" iconTint="var(--blue)" title={t('Pair the mobile app')} subtitle={t('Connect the openGym app on your phone to this account.')} accessory="chevron"
             onClick={() => useUI.getState().openSheet(close => <PairSheet close={close} />)} />
+          {!MOBILE && <Row icon="chat" iconTint="var(--indigo)" title={t('Connect Claude')} subtitle={t('Use your training in Claude Code: reviews, plans, logging.')} accessory="chevron"
+            onClick={() => useUI.getState().openSheet(close => <ClaudeSheet close={close} />)} />}
           {pwOn && <PasswordRow version={credsV} />}
           <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={signOutHere} />
           <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
@@ -1469,6 +1471,45 @@ function PairSheet({ close }) {
         {code || '········'}
       </div>
     )}
+    <div style={{ height: 12 }} />
+    <Button onClick={close}>{t('Done')}</Button>
+  </>
+}
+
+// The MCP endpoint this deployment serves at /api/mcp (mcp/src/http.js, docs/MCP_CLAUDE_CODE.md),
+// and the one command that adds it to Claude Code. The token is a paired session, minted the way
+// the phone app is paired (a pairing code, redeemed at once), so "Sign out everywhere" ends it like
+// any other device; it is shown only here, once, inside the command.
+export function claudeCommand(origin, token) {
+  return `claude mcp add --transport http opengym ${origin}/api/mcp --header "Authorization: Bearer ${token}"`
+}
+
+function ClaudeSheet({ close }) {
+  const [cmd, setCmd] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const make = async () => {
+    setBusy(true); setErr(null)
+    try {
+      const { code } = await api('/api/pair/create', { method: 'POST', body: '{}' })
+      const { token } = await api('/api/pair/redeem', { method: 'POST', body: JSON.stringify({ code }) })
+      setCmd(claudeCommand(location.origin, token))
+    } catch (e) { setErr(t('Could not create a token')) }
+    setBusy(false)
+  }
+  const copy = async () => { if (await copyText(cmd)) useUI.getState().toast(t('Copied')) }
+  return <>
+    <h3>{t('Connect Claude')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>
+      {t('Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.')}
+    </div>
+    {cmd ? <>
+      <div className="card small" style={{ fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all', userSelect: 'all', padding: 12 }}>{cmd}</div>
+      <div style={{ height: 10 }} />
+      <Button variant="primary" onClick={copy}>{t('Copy command')}</Button>
+    </> : <Button variant="primary" disabled={busy} onClick={make}>{t('Create the command')}</Button>}
+    {err && <div className="dim small" style={{ marginTop: 8 }}>{err}</div>}
+    <div className="dim small" style={{ marginTop: 10 }}>{t('The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.')}</div>
     <div style={{ height: 12 }} />
     <Button onClick={close}>{t('Done')}</Button>
   </>

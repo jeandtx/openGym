@@ -1535,6 +1535,14 @@ export const PT_BR_OVERRIDES = {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'Este dispositivo tem 1 treino que não está neste backup. Substituir exclui esse treino.',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'Este dispositivo tem {0} treinos que não estão neste backup. Substituir exclui esses treinos.',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'Conectar o Claude',
+  'Use your training in Claude Code: reviews, plans, logging.': 'Seu treino no Claude Code: balanços, planos, anotação de treinos.',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'Permite que o Claude Code leia seu treino e, com a sua concordância, anote treinos e altere seu plano. Rode este comando uma vez em um terminal no seu computador.',
+  'Create the command': 'Criar o comando',
+  'Copy command': 'Copiar comando',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'O comando contém um login no seu perfil: mantenha-o privado. “Sair de todos os dispositivos” o revoga.',
+  'Could not create a token': 'Não foi possível criar um token',
 }
 
 export default { ...pt, ...PT_BR_OVERRIDES }

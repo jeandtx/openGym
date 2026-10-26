@@ -5,16 +5,43 @@ Ce fork branche le serveur MCP d'openGym (`mcp/`) sur l'instance Vercel + Supaba
 historique, faire un bilan, enregistrer une séance ou une pesée, modifier tes routines et
 planifier la semaine suivante.
 
-Le serveur MCP tourne **sur ta machine**, lancé par Claude Code. Il ne parle qu'à ton instance,
-en HTTPS, avec un jeton d'appareil. Les données restent dans Supabase : rien n'est copié
-ailleurs.
+Deux façons de le brancher :
+
+- **Depuis l'app (le plus simple)** : l'instance sert le MCP elle-même, sur
+  `https://opengym-jeandtx.vercel.app/api/mcp`, dans la même fonction Vercel que l'API. Rien à
+  installer sur ta machine.
+- **En local** : `node mcp/src/index.js`, lancé par Claude Code en stdio. Utile pour développer le
+  MCP ou pour un client sans HTTP.
+
+Dans les deux cas, les outils lisent et écrivent **via l'API** avec un jeton d'appareil (comme
+l'app mobile appairée). Les données restent dans Supabase : rien n'est copié ailleurs.
 
 ```
-Claude Code ──stdio──▶ node mcp/src/index.js ──HTTPS + Bearer──▶ opengym-jeandtx.vercel.app/api
-                       (mode serveur : pas de ./data)          GET /api/data, /api/data/rev, PUT /api/data
+Claude Code ──HTTPS + Bearer──▶ /api/mcp ──▶ mêmes outils ──HTTPS + même jeton──▶ /api/data …
+            (ou stdio ▶ node mcp/src/index.js, en local)
 ```
 
-## Installation (une fois)
+## Depuis l'app (recommandé)
+
+1. Dans l'app, connecté : **Réglages → Compte → « Connecter Claude » → Créer la commande**.
+2. Copie la commande et lance-la une fois dans un terminal :
+
+   ```bash
+   claude mcp add --transport http opengym https://opengym-jeandtx.vercel.app/api/mcp \
+     --header "Authorization: Bearer <jeton>"
+   ```
+
+3. Dans Claude Code, `/mcp` doit afficher `opengym` comme connecté, avec 17 outils.
+
+La commande contient une **connexion complète à ton profil** : garde-la pour toi. Elle dure
+`SESSION_DAYS` (90 jours par défaut), et **« Se déconnecter partout »** la révoque. Il suffit
+ensuite d'en créer une nouvelle.
+
+Ce point d'accès sert le Claude Code (et tout client MCP qui accepte un en-tête). Les
+« connecteurs » de claude.ai et de Claude Desktop demandent une connexion OAuth, que ce point
+d'accès n'a pas (pour ça, voir la PR amont DuarteSantos8/openGym#781).
+
+## En local (stdio)
 
 1. **Dépendances du MCP** :
 

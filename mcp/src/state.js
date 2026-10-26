@@ -24,6 +24,8 @@ let _watcher = null
 let _loadedMtime = 0    // mtimeMs we last read at — used to catch watcher omissions
 let _seeded = false     // a test's in-memory state, never compared with the disk or the server
 let _remote = null      // server mode: { rev, wid } of the document held in _state
+let _env = null         // the environment a request binds (http.js), in place of process.env
+const envNow = () => _env || process.env
 
 // null means one thing only: the file is not there (an account that never synced from a device).
 // Every other failure — no permission on the mount, a truncated or corrupt file — is a real fault,
@@ -170,7 +172,7 @@ export const dataDir = () => DATA_DIR
 // several profiles, throws: a broken mount is no licence to write to whichever profile the token is.
 export function localUid() {
   if (_uid !== null) return _uid
-  const envUid = (process.env.OPENGYM_UID || '').trim()
+  const envUid = (envNow().OPENGYM_UID || '').trim()
   if (envUid) return envUid
   if (remoteMode() || (!DATA_SET && !fs.existsSync(DATA_DIR))) return null
   init()
@@ -186,7 +188,7 @@ export function invalidate() {
 }
 
 /** Whether the profile comes from the server (OPENGYM_URL set, no OPENGYM_DATA) rather than a folder. */
-export function remoteMode(env = process.env) {
+export function remoteMode(env = envNow()) {
   return !_seeded && !env.OPENGYM_DATA && !!String(env.OPENGYM_URL || '').trim()
 }
 
@@ -196,7 +198,7 @@ export function remoteMode(env = process.env) {
  * when it moved. A no-op in data-directory mode. Throws the api client's coded errors (EAUTH,
  * EAPI, ENOCONFIG), which the tool call reports as they are.
  */
-export async function refresh({ env = process.env, fetchImpl } = {}) {
+export async function refresh({ env = envNow(), fetchImpl } = {}) {
   if (!remoteMode(env)) return
   const cfg = apiConfig(env)
   const opts = fetchImpl ? { fetchImpl } : {}
@@ -223,9 +225,20 @@ export async function refresh({ env = process.env, fetchImpl } = {}) {
   _remote.wid = (doc && typeof doc._wid === 'string') ? doc._wid : wid
 }
 
+/**
+ * Serve one request for whoever `env` names (http.js): forget the profile held from the last one
+ * and read in server mode with `env` (OPENGYM_URL + OPENGYM_TOKEN) instead of process.env, until
+ * the next bind. The state here is one profile at a time, so the caller runs requests one after
+ * the other. `bindEnv(null)` goes back to process.env.
+ */
+export function bindEnv(env) {
+  _resetForTests()
+  _env = env
+}
+
 // Test-only: forget whatever was loaded, so a test can start the server mode from scratch.
 export function _resetForTests() {
-  _state = undefined; _db = undefined; _uid = null; _loadedMtime = 0; _seeded = false; _remote = null
+  _state = undefined; _db = undefined; _uid = null; _loadedMtime = 0; _seeded = false; _remote = null; _env = null
   if (_watcher) { _watcher.close(); _watcher = null }
 }
 

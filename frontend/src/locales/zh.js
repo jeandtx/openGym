@@ -2414,4 +2414,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': '此设备上有 1 次训练不在此备份中。替换会删除它。',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': '此设备上有 {0} 次训练不在此备份中。替换会删除它们。',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': '连接 Claude',
+  'Use your training in Claude Code: reviews, plans, logging.': '在 Claude Code 中使用你的训练：回顾、计划、记录。',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': '让 Claude Code 读取你的训练，并在你同意后记录训练、修改计划。在电脑的终端中运行一次这条命令。',
+  'Create the command': '生成命令',
+  'Copy command': '复制命令',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': '这条命令包含你的账号登录凭据：请勿外传。“在所有设备上退出登录”可将其撤销。',
+  'Could not create a token': '无法创建令牌',
 }

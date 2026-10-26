@@ -2469,4 +2469,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'على هذا الجهاز تمرين واحد ليس في هذه النسخة الاحتياطية. الاستبدال يحذفه.',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'على هذا الجهاز {0} تمارين ليست في هذه النسخة الاحتياطية. الاستبدال يحذفها.',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'ربط Claude',
+  'Use your training in Claude Code: reviews, plans, logging.': 'تمارينك في Claude Code: مراجعات وخطط وتسجيل.',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'يتيح لـ Claude Code قراءة تمارينك، وبعد موافقتك، تسجيل التمارين وتغيير خطتك. شغّل هذا الأمر مرة واحدة في نافذة الأوامر على حاسوبك.',
+  'Create the command': 'إنشاء الأمر',
+  'Copy command': 'نسخ الأمر',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'يحتوي الأمر على تسجيل دخول إلى ملفك: احتفظ به لنفسك. «تسجيل الخروج من كل الأجهزة» يلغيه.',
+  'Could not create a token': 'تعذّر إنشاء رمز',
 }

@@ -2414,4 +2414,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': '이 기기에 이 백업에 없는 운동이 1개 있습니다. 바꾸면 삭제됩니다.',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': '이 기기에 이 백업에 없는 운동이 {0}개 있습니다. 바꾸면 삭제됩니다.',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'Claude 연결',
+  'Use your training in Claude Code: reviews, plans, logging.': 'Claude Code에서 내 운동 기록 활용: 리뷰, 계획, 기록.',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'Claude Code가 운동 기록을 읽고, 동의하면 운동을 기록하고 계획을 바꿀 수 있게 합니다. 컴퓨터 터미널에서 이 명령을 한 번 실행하세요.',
+  'Create the command': '명령 만들기',
+  'Copy command': '명령 복사',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': '이 명령에는 내 프로필 로그인이 들어 있습니다. 다른 사람과 공유하지 마세요. ‘모든 기기에서 로그아웃’으로 취소할 수 있습니다.',
+  'Could not create a token': '토큰을 만들 수 없습니다',
 }

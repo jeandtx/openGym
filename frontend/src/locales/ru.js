@@ -2418,4 +2418,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'На этом устройстве есть 1 тренировка, которой нет в этой копии. Замена её удалит.',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'На этом устройстве есть тренировки, которых нет в этой копии ({0}). Замена их удалит.',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'Подключить Claude',
+  'Use your training in Claude Code: reviews, plans, logging.': 'Ваши тренировки в Claude Code: обзоры, планы, запись.',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'Позволяет Claude Code читать ваши тренировки и, с вашего согласия, записывать тренировки и менять план. Выполните эту команду один раз в терминале на компьютере.',
+  'Create the command': 'Создать команду',
+  'Copy command': 'Копировать команду',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'Команда содержит вход в ваш профиль: никому её не показывайте. «Выйти на всех устройствах» отзывает её.',
+  'Could not create a token': 'Не удалось создать токен',
 }

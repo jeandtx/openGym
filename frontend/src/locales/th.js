@@ -2425,4 +2425,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'อุปกรณ์นี้มีการออกกำลังกาย 1 รายการที่ไม่อยู่ในข้อมูลสำรองนี้ การแทนที่จะลบรายการนั้น',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'อุปกรณ์นี้มีการออกกำลังกาย {0} รายการที่ไม่อยู่ในข้อมูลสำรองนี้ การแทนที่จะลบรายการเหล่านั้น',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'เชื่อมต่อ Claude',
+  'Use your training in Claude Code: reviews, plans, logging.': 'การฝึกของคุณใน Claude Code: สรุปผล แผน และการบันทึก',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'ให้ Claude Code อ่านการฝึกของคุณ และเมื่อคุณยินยอม ก็บันทึกการออกกำลังกายและเปลี่ยนแผนของคุณได้ รันคำสั่งนี้หนึ่งครั้งในเทอร์มินัลบนคอมพิวเตอร์ของคุณ',
+  'Create the command': 'สร้างคำสั่ง',
+  'Copy command': 'คัดลอกคำสั่ง',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'คำสั่งนี้มีการลงชื่อเข้าใช้โปรไฟล์ของคุณ: เก็บไว้เป็นความลับ “ออกจากระบบทุกอุปกรณ์” จะเพิกถอนคำสั่งนี้',
+  'Could not create a token': 'สร้างโทเค็นไม่ได้',
 }

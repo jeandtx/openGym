@@ -2414,4 +2414,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': 'इस डिवाइस पर 1 वर्कआउट है जो इस बैकअप में नहीं है। बदलने से यह मिट जाएगा।',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': 'इस डिवाइस पर {0} वर्कआउट हैं जो इस बैकअप में नहीं हैं। बदलने से ये मिट जाएँगे।',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': 'Claude जोड़ें',
+  'Use your training in Claude Code: reviews, plans, logging.': 'Claude Code में आपकी ट्रेनिंग: समीक्षा, योजनाएँ, लॉग करना।',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': 'Claude Code को आपकी ट्रेनिंग पढ़ने देता है और आपकी सहमति पर वर्कआउट लॉग करने व आपकी योजना बदलने देता है। यह कमांड अपने कंप्यूटर के टर्मिनल में एक बार चलाएँ।',
+  'Create the command': 'कमांड बनाएँ',
+  'Copy command': 'कमांड कॉपी करें',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'इस कमांड में आपकी प्रोफ़ाइल का साइन-इन है: इसे निजी रखें। «हर जगह साइन आउट करें» इसे रद्द कर देता है।',
+  'Could not create a token': 'टोकन नहीं बनाया जा सका',
 }

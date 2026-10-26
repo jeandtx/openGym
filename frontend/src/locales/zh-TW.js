@@ -2407,4 +2407,12 @@ export default {
   // --- import with no account: workouts on this device ---
   'This device has 1 workout that is not in this backup. Replacing deletes it.': '此裝置上有 1 筆訓練紀錄不在此備份中。覆蓋將會刪除它。',
   'This device has {0} workouts that are not in this backup. Replacing deletes them.': '此裝置上有 {0} 筆訓練紀錄不在此備份中。覆蓋將會將其全數刪除。',
+  // --- Settings → Account: Connect Claude (MCP) ---
+  'Connect Claude': '連接 Claude',
+  'Use your training in Claude Code: reviews, plans, logging.': '在 Claude Code 中使用你的訓練：回顧、計畫、記錄。',
+  'Lets Claude Code read your training and, once you agree, log workouts and change your plan. Run this command once in a terminal on your computer.': '讓 Claude Code 讀取你的訓練，並在你同意後記錄訓練、修改計畫。在電腦的終端機中執行一次這行指令。',
+  'Create the command': '產生指令',
+  'Copy command': '複製指令',
+  'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': '這行指令包含你的帳號登入憑證：請勿外流。「所有裝置全部登出」可將其撤銷。',
+  'Could not create a token': '無法建立權杖',
 }
