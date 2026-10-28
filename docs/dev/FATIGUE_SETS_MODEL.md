@@ -48,6 +48,11 @@ claim is disputed (https://www.globalperformanceinsights.com/post/has-the-acute-
   (30 minutes retains the former one-row stimulus as a continuity anchor) and imported
   RPE adjusts intensity; timed holds remain one set. This is a coarse fatigue-map
   proxy, not a validated conversion between cardio minutes and lifting sets.
+  A sport done outside the gym (swimming, climbing, padel: `lib/sports.js`) is a cardio
+  exercise with its own muscles and a `cardioDensity`, the sets one 30-minute row is
+  worth on a primary (default 1, clamped 0.25–4): 90 hard minutes of bouldering at 3
+  is 9 sets on the forearms and back, nothing on the legs. The densities are estimates
+  to tune against real sessions; the 12-set session cap still bounds them.
 - **Session-local relative intensity per set**: `(load/entryBest)^1.5`, unit-free
   (kg/lb histories score identically), zero-load sets count full (assume hard when
   unknown). Ramp-up rows therefore cost a fraction of a set instead of a full one.

@@ -4,6 +4,7 @@ import { MUSCLES, musclesOf } from './muscles.js'
 import { isWarmupRow, dropsOf, isSideSet } from './workout-model.js'
 import { estimate1RM, REP_CAP } from './onerm.js'
 import { rirOf, HARD_RIR } from './effort.js'
+import { cardioDensityOf } from './sports.js'
 
 // Fatigue stimulus in effective hard sets, not tonnage: hypertrophy dose-response
 // tracks sets near failure (~5-30 reps), while tonnage overweights heavy compounds
@@ -277,7 +278,10 @@ function sessionEffSets(workout, anchors, opts = {}) {
   }
   for (const entry of workout?.entries || []) {
     const ex = exerciseFor(entry)
-    const weights = musclesOf(ex)
+    // A sport works its muscles harder per minute than a run does (sports.js), so its cardio
+    // row's weights carry the density on top of the duration score() applies.
+    const density = modeOf({ ...(entry?.target || {}), id: entry?.id }) === 'cardio' ? cardioDensityOf(ex) : 1
+    const weights = Object.fromEntries(Object.entries(musclesOf(ex)).map(([slug, w]) => [slug, w * density]))
     for (const set of entry.sets || []) {
       score(set, set, entry, weights)
       // Drop-set drops carry their own load against the same anchor - extra work at

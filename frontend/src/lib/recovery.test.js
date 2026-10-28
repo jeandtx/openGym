@@ -29,6 +29,7 @@ import { EXDB, registerCustom } from './exercises.js'
 import { MUSCLES, exerciseMuscleSnapshot, musclesOf } from './muscles.js'
 import { fatigueStateOf } from './recovery-view.js'
 import { estimate1RM } from './onerm.js'
+import { SPORTS, sportExercise } from './sports.js'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -174,6 +175,74 @@ describe('fatigueOf and strengthOf', () => {
     })
 
     expect(fatigueOf([run(9)], NOW).quadriceps).toBeGreaterThan(fatigueOf([run(6)], NOW).quadriceps)
+  })
+
+  describe('sports logged as one cardio row', () => {
+    const sportSession = (id, min, rpe, extra = {}) => ({
+      d: new Date(NOW).toISOString(),
+      start: NOW,
+      entries: [{ id, sets: [{ min, rpe, done: true }], ...extra }],
+    })
+    const withSports = fn => {
+      registerCustom(SPORTS.map(s => sportExercise(s.key, 'sport-' + s.key)))
+      try { return fn() } finally { registerCustom([]) }
+    }
+
+    it('puts 90 hard minutes of climbing on the forearms and back, not the legs', () => withSports(() => {
+      const fatigue = fatigueOf([sportSession('sport-climbing', 90, 8)], NOW)
+      // 90 min = 3 rows' worth, x3 density = 9 sets on each primary; RPE 8 is a hard effort.
+      expect(fatigue.forearm).toBeCloseTo(expectedSets(9, 1, 'forearm'), 10)
+      expect(fatigue['upper-back']).toBeCloseTo(expectedSets(9, 1, 'upper-back'), 10)
+      expect(fatigue.deltoids).toBeCloseTo(expectedSets(9, 0.4, 'deltoids'), 10)
+      expect(fatigueStateOf(fatigue.forearm)).toBe(FATIGUE_STATES.FATIGUED)
+      expect(fatigue.quadriceps).toBe(0)
+      expect(fatiguedMuscles([sportSession('sport-climbing', 90, 8)], NOW)).not.toContain('quadriceps')
+    }))
+
+    it('loads the legs after padel and the shoulders after swimming', () => withSports(() => {
+      const padel = fatigueOf([sportSession('sport-padel', 60, 7)], NOW)
+      expect(padel.quadriceps).toBeGreaterThan(0)
+      expect(padel.biceps).toBe(0)
+      const swim = fatigueOf([sportSession('sport-swimming', 60, 7)], NOW)
+      expect(swim.deltoids).toBeGreaterThan(0)
+      expect(swim.quadriceps).toBe(0)
+    }))
+
+    it('weighs an easy session less, and caps a very long one at a session\'s worth', () => withSports(() => {
+      const hard = fatigueOf([sportSession('sport-climbing', 60, 9)], NOW).forearm
+      const easy = fatigueOf([sportSession('sport-climbing', 60, 4)], NOW).forearm
+      expect(easy).toBeLessThan(hard)
+      const marathon = fatigueOf([sportSession('sport-climbing', 300, 9)], NOW).forearm
+      expect(marathon).toBeCloseTo(expectedSets(FATIGUE_MAX_SETS_PER_SESSION, 1, 'forearm'), 10)
+    }))
+
+    it('scores a cardio exercise without a density exactly as before', () => {
+      const id = 'recovery-plain-sport'
+      registerCustom([{ id, n: 'Rowing outdoors', bp: 'cardio', eq: 'custom', primaries: ['upper-back'], secondaries: [] }])
+      try {
+        expect(fatigueOf([sportSession(id, 30, 8)], NOW)['upper-back']).toBeCloseTo(expectedSets(1, 1, 'upper-back'), 10)
+      } finally {
+        registerCustom([])
+      }
+    })
+
+    it('keeps scoring a deleted custom sport from its snapshot', () => {
+      const live = withSports(() => fatigueOf([sportSession('sport-climbing', 60, 8)], NOW))
+      const deleted = sportSession('sport-climbing', 60, 8, {
+        target: { mode: 'cardio' },
+        muscleSnapshot: exerciseMuscleSnapshot(sportExercise('climbing', 'sport-climbing')),
+      })
+      expect(fatigueOf([deleted], NOW).forearm).toBeCloseTo(live.forearm, 10)
+    })
+
+    it('leaves the density out of a row logged as reps', () => withSports(() => {
+      const reps = {
+        d: new Date(NOW).toISOString(),
+        start: NOW,
+        entries: [{ id: 'sport-climbing', target: { mode: 'reps' }, sets: [{ w: 0, r: 10, rir: 1, done: true }] }],
+      }
+      expect(fatigueOf([reps], NOW).forearm).toBeCloseTo(expectedSets(1, 1, 'forearm'), 10)
+    }))
   })
 
   it('uses a deleted exercise snapshot for the same bounded primary and secondary fatigue', () => {
