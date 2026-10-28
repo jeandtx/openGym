@@ -17,7 +17,9 @@ et renvoie l'utilisateur à `docs/MCP_CLAUDE_CODE.md` (appairage, `OPENGYM_TOKEN
 Un seul appel par outil, en parallèle quand c'est possible :
 
 - `training_review` : la période demandée (par défaut les 28 derniers jours) comparée à la
-  précédente. Pour « le mois d'octobre », passe `from` / `to`.
+  précédente. Pour « le mois d'octobre », passe `from` / `to`. Tout y est de la muscu, sauf
+  `other_sports` : les séances de natation, d'escalade, de padel… (séances, minutes, RPE moyen,
+  par sport et par semaine).
 - `recovery_status` : la fatigue de chaque muscle aujourd'hui.
 - `get_week_plan` et `list_routines` : ce qui est prévu, et s'il y a déjà une « coach week ».
 - `get_routine` pour chaque routine qui sert dans la semaine ou dont tu proposes de changer
@@ -27,8 +29,9 @@ Un seul appel par outil, en parallèle quand c'est possible :
 
 En français, avec des titres courts :
 
-1. **Régularité** : séances par semaine face au plan (`planned_sessions_per_week`), semaine par
-   semaine, durée moyenne.
+1. **Régularité** : séances de muscu par semaine face au plan (`planned_sessions_per_week`),
+   semaine par semaine, durée moyenne. Les autres sports se comptent à part (section 6), jamais
+   dans ce rapport au plan.
 2. **Charge et effort** : volume et séries de travail face à la période précédente, % de séries
    à l'échec, RIR/RPE moyen s'il est noté.
 3. **Progression** : les exercices principaux avec le 1RM estimé (meilleur, évolution face à la
@@ -38,9 +41,12 @@ En français, avec des titres courts :
    sous environ 8 séries par semaine (ou non travaillés) et ceux au-dessus d'environ 20. Ce sont
    des repères, pas des règles.
 5. **Poids de corps** : premier / dernier / variation, comparés à l'objectif.
-6. **Impact** : 3 à 5 constats qui relient ce qui a été fait aux résultats. Par exemple « +2
+6. **Autres sports** (si `other_sports.sessions` > 0) : séances et minutes par sport, face à la
+   période précédente, RPE moyen, et les semaines où ils se sont empilés sur la muscu.
+7. **Impact** : 3 à 5 constats qui relient ce qui a été fait aux résultats. Par exemple « +2
    séances de dos → tirage +8 % », « développé couché stagnant malgré 4 séances à l'échec »,
-   « ischios sous-entraînés ».
+   « ischios sous-entraînés ». Les autres sports en font partie : « escalade la veille du
+   tirage → tractions en baisse », « padel le lendemain des jambes ».
 
 ## 3. Proposer la semaine suivante
 
@@ -48,6 +54,11 @@ Une proposition concrète, justifiée par le bilan :
 
 - **Les séances, dans l'ordre**, en partant des routines existantes. Tiens compte de
   `recovery_status` : ne mets pas en premier un muscle encore `fatigued`.
+- **Les autres sports** : demande les jours où l'utilisateur les fait d'habitude (ou déduis-les
+  de `other_sports.weeks`), et place la muscu autour. Pas de tirage ni de bras le lendemain de
+  l'escalade, pas de jambes lourdes la veille du padel, épaules légères autour de la natation.
+  `schedule_week` ne planifie que des routines : les sports figurent dans la proposition, pas
+  dans la coach week.
 - **Les changements de routine**, chacun avec sa raison :
   - lift stagnant → baisser les séries ou les reps, changer la plage de reps, ou remplacer
     l'exercice (`swap-exercise`), une seule de ces options par lift ;
@@ -77,6 +88,8 @@ modifications). N'écris rien avant.
 
 ## Règles
 
+- Une séance de sport racontée pendant le bilan (« j'ai aussi fait 1h de padel jeudi ») se
+  note avec `log_sport`, après accord comme toute écriture.
 - Aucune écriture (`log_*`, `apply_plan_changes`, `schedule_week`, `revert_last_plan_change`)
   sans accord explicite dans la conversation.
 - Une erreur `ECONFIRM` demande une confirmation de l'utilisateur. Ne la contourne pas avec

@@ -5,6 +5,7 @@ import { reviewOf, recoveryOf, REVIEW_TOOLS } from '../src/review-tools.js'
 import { _seedStateForTests } from '../src/state.js'
 import { buildDemoState } from '../../frontend/src/lib/demoSeed.js'
 import { estimate1RM } from '../../frontend/src/lib/onerm.js'
+import { sportExercise } from '../../frontend/src/lib/sports.js'
 
 const at = (d, h = 18) => new Date(d + 'T' + String(h).padStart(2, '0') + ':00:00').getTime()
 const set = (w, r, extra = {}) => ({ w, r, done: true, ...extra })
@@ -79,6 +80,49 @@ describe('reviewOf', () => {
     expect(() => reviewOf(history(), { from: '2026-10-10', to: '2026-10-01' })).toThrow(/after/)
   })
 })
+
+describe('sport sessions', () => {
+  // Climbing twice and padel once this period, padel once in the previous one, beside the gym.
+  const sport = (d, id, min, rpe) => session(d, [{ id, sets: [{ min, ...(rpe ? { rpe } : {}), done: true }], target: { mode: 'cardio' } }], { id: 'sp-' + d + id, name: 'Sport' })
+  const withSports = () => {
+    const S = history()
+    S.customEx = [{ ...sportExercise('climbing', 'cl'), n: 'Escalade' }, sportExercise('padel', 'pa')]
+    S.workouts.push(sport('2026-09-15', 'pa', 60, 7), sport('2026-10-03', 'cl', 90, 8), sport('2026-10-10', 'cl', 60), sport('2026-10-20', 'pa', 75, 6))
+    return S
+  }
+
+  test('stay out of the gym numbers', () => {
+    const x = reviewOf(withSports(), { to: '2026-10-26' })
+    expect(x.training).toEqual(r0().training)
+    expect(x.exercises.map(e => e.id)).toEqual(r0().exercises.map(e => e.id))
+    expect(x.muscles).toEqual(r0().muscles)
+  })
+
+  test('are counted in other_sports, per sport and per week, against the previous period', () => {
+    const o = reviewOf(withSports(), { to: '2026-10-26' }).other_sports
+    expect(o).toMatchObject({ sessions: 3, minutes: 225, avg_rpe: 7, previous_period: { sessions: 1, minutes: 60 } })
+    expect(o.by_sport).toEqual([
+      { sport: 'Escalade', sessions: 2, minutes: 150, avg_rpe: 8 },
+      { sport: 'Padel', sessions: 1, minutes: 75, avg_rpe: 6 },
+    ])
+    expect(o.weeks.map(w => [w.week_start, w.sessions, w.minutes])).toEqual([['2026-09-28', 1, 90], ['2026-10-05', 1, 60], ['2026-10-19', 1, 75]])
+  })
+
+  test('none is an empty block', () => {
+    expect(r0().other_sports).toEqual({ sessions: 0, minutes: 0, avg_rpe: null, by_sport: [], weeks: [], previous_period: { sessions: 0, minutes: 0 } })
+  })
+
+  test('count in recovery on the muscles the sport works', () => {
+    const S = withSports()
+    S.workouts.push(sport('2026-10-25', 'cl', 90, 8))
+    const rec = recoveryOf(S, at('2026-10-26', 9))
+    expect(rec.muscles.find(m => m.slug === 'forearm').state).not.toBe('ready')
+    // Neither sport works the hamstrings; the quads only carry what is left of padel six days ago.
+    expect(rec.muscles.find(m => m.slug === 'hamstring').fatigue).toBe(0)
+    expect(rec.muscles.find(m => m.slug === 'quadriceps').state).toBe('ready')
+  })
+})
+const r0 = () => reviewOf(history(), { to: '2026-10-26' })
 
 describe('recoveryOf', () => {
   test('a muscle trained hard yesterday is not ready; one never trained is detraining', () => {

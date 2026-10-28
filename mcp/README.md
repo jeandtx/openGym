@@ -92,6 +92,7 @@ Nine read tools, three review tools, and five that write:
 | `find_exercise` | An exercise name → the library id the plan tools take, or candidates when it is ambiguous. |
 | `log_workout` | *Writes.* "I did dumbbell curls, 12 kg, 12/12/10" → a logged session in your history, on every device. Needs pairing: [Logging workouts](#logging-workouts). |
 | `log_bodyweight` | *Writes.* A weigh-in for a day; a second one that day replaces it. |
+| `log_sport` | *Writes.* "90 minutes of bouldering yesterday, RPE 8" → a sport session (swimming, climbing, padel, or a cardio sport you made in the app), as the app's **Log a sport** files it: recovery counts it on that sport's muscles, `training_review` lists it under `other_sports`. |
 | `apply_plan_changes` | *Writes.* Routine and weekly-plan edits in the AI Coach's change format (sets, reps, swap, add/remove an exercise or a routine, progression, the weekday plan), all or nothing, snapshotted first. |
 | `revert_last_plan_change` | *Writes.* Undo the last `apply_plan_changes` (or the in-app Coach's last change). |
 | `schedule_week` | *Writes.* Next week's sessions as a coach week: routines in order, offered one by one on the days you train, optionally pinned to dates. |
@@ -220,7 +221,9 @@ not start with forty `get_workout` calls the model has to add up:
    (share of sets to failure, average RIR/RPE), each exercise's estimated 1RM — best, first and
    last in the period, change against the previous period, trend — the lifts trained three
    times or more without a gain (`stalled`), those dropped since, PRs, effective sets per muscle
-   and per week, the muscles not trained, and body weight against the goal.
+   and per week, the muscles not trained, and body weight against the goal. All of that is the
+   gym work: sport sessions (`log_sport`) are counted apart in `other_sports` (sessions, minutes,
+   average RPE, per sport and per week), and still weigh on `recovery_status`.
 2. `recovery_status` says what is fatigued today, and `get_week_plan` / `get_routine` /
    `preview_session` what is planned and at which weights.
 3. The proposal goes to the user. Only once they agree:

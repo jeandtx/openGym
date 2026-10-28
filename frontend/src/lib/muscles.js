@@ -244,6 +244,8 @@ export function exerciseMuscleSnapshot(ex) {
     if (secondaries.length) out.secondaries = secondaries
   }
   if (hasExplicitMuscleMetadata(ex)) out.muscleGroups = [...muscleGroupsOf(ex)]
+  // A sport's per-minute weight (sports.js), so a deleted custom sport keeps scoring as it did.
+  if (ex.cardioDensity != null) out.cardioDensity = ex.cardioDensity
   return out
 }
 

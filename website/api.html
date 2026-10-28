@@ -245,7 +245,7 @@ main.api-main .lead { color: var(--fg-2); max-width: 58ch; margin: 14px 0 0; fon
   <p class="api-facts">
     <span>OpenAPI 3.1.0</span>
     <span>openGym v1.4.2</span>
-    <span>73 endpoints</span>
+    <span>78 endpoints</span>
     <span>AGPL-3.0-or-later</span>
   </p>
 
@@ -701,6 +701,121 @@ main.api-main .lead { color: var(--fg-2); max-width: 58ch; margin: 14px 0 0; fon
   <div class="prow rrow">
     <span class="r-code s4">400</span>
     <span class="p-desc">Code unknown, already used, expired, or the account behind it is gone or disabled (deliberately the same message for all of these).<span class="r-sig"><code>{&quot;error&quot;:&quot;invalid or expired code&quot;}</code></span></span>
+  </div>
+    </div>
+  </div>
+</details>
+
+<details class="ep" id="op-oauthRegister">
+  <summary>
+    <span class="m post">POST</span>
+    <span class="ep-path"><code>/api/oauth/register</code><span class="ep-chip public">public</span></span>
+    <span class="ep-chev" aria-hidden="true"></span>
+    <span class="ep-sum">Register an OAuth client (MCP connectors)</span>
+  </summary>
+  <div class="ep-body">
+<p>Dynamic client registration (RFC 7591) for the MCP endpoint's OAuth sign-in, which a claude.ai connector uses. Public clients only (PKCE, no secret). Nothing is stored: the returned <code>client_id</code> is the registration, signed. Discovery documents are served at <code>/.well-known/oauth-authorization-server</code> and <code>/.well-known/oauth-protected-resource</code>. CSRF-exempt.</p>
+    <p class="ep-auth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Public: no authentication required.</span></p>
+
+<p class="ep-h">Request body <span class="p-hint">(JSON)</span></p><div class="ptab">
+  <div class="prow">
+    <span class="p-name">redirect_uris<em class="p-req" title="required">required</em></span>
+    <span class="p-type">string[]</span>
+    <span class="p-desc">1 to 5; https, or http on a loopback address.</span>
+  </div>
+  <div class="prow">
+    <span class="p-name">client_name</span>
+    <span class="p-type">string</span>
+    <span class="p-desc"></span>
+  </div>
+</div>
+    <p class="ep-h">Responses</p>
+    <div class="ptab">
+  <div class="prow rrow">
+    <span class="r-code s2">201</span>
+    <span class="p-desc">Registered; the body carries <code>client_id</code>.</span>
+  </div>
+  <div class="prow rrow">
+    <span class="r-code s4">400</span>
+    <span class="p-desc"><code>invalid_redirect_uri</code>.</span>
+  </div>
+    </div>
+  </div>
+</details>
+
+<details class="ep" id="op-oauthAuthorize">
+  <summary>
+    <span class="m get">GET</span>
+    <span class="ep-path"><code>/api/oauth/authorize</code><span class="ep-chip public">public</span></span>
+    <span class="ep-chev" aria-hidden="true"></span>
+    <span class="ep-sum">OAuth consent page</span>
+  </summary>
+  <div class="ep-body">
+<p>Authorization-code request (<code>response_type=code</code>, PKCE <code>S256</code> required). An HTML page: the consent prompt for the signed-in user (session cookie), or a prompt to sign in first. An unknown client or unregistered <code>redirect_uri</code> is shown as an error, never redirected to.</p>
+    <p class="ep-auth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Public: no authentication required.</span></p>
+
+
+    <p class="ep-h">Responses</p>
+    <div class="ptab">
+  <div class="prow rrow">
+    <span class="r-code s2">200</span>
+    <span class="p-desc">The consent (or sign-in) page</span>
+  </div>
+  <div class="prow rrow">
+    <span class="r-code s3">302</span>
+    <span class="p-desc">Back to the client's redirect_uri with an <code>error</code>.</span>
+  </div>
+  <div class="prow rrow">
+    <span class="r-code s4">400</span>
+    <span class="p-desc">Unknown client or redirect_uri</span>
+  </div>
+    </div>
+  </div>
+</details>
+
+<details class="ep" id="op-oauthDecide">
+  <summary>
+    <span class="m post">POST</span>
+    <span class="ep-path"><code>/api/oauth/authorize</code></span>
+    <span class="ep-chev" aria-hidden="true"></span>
+    <span class="ep-sum">Allow or deny on the consent page</span>
+  </summary>
+  <div class="ep-body">
+<p>The consent page's form (application/x-www-form-urlencoded), the request's parameters plus <code>decision=allow|deny</code>. Acts on the session cookie, so same-origin only. Allow redirects to the client with a one-shot <code>code</code> (5 minutes); deny with <code>error=access_denied</code>.</p>
+    <p class="ep-auth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Requires a session: the cookie set at sign-in, or <code>Authorization: Bearer &lt;token&gt;</code> from mobile-app pairing.</span></p>
+
+
+    <p class="ep-h">Responses</p>
+    <div class="ptab">
+  <div class="prow rrow">
+    <span class="r-code s3">302</span>
+    <span class="p-desc">Back to the client's redirect_uri.</span>
+  </div>
+    </div>
+  </div>
+</details>
+
+<details class="ep" id="op-oauthToken">
+  <summary>
+    <span class="m post">POST</span>
+    <span class="ep-path"><code>/api/oauth/token</code><span class="ep-chip public">public</span></span>
+    <span class="ep-chev" aria-hidden="true"></span>
+    <span class="ep-sum">Exchange an OAuth code or refresh token</span>
+  </summary>
+  <div class="ep-body">
+<p><code>grant_type=authorization_code</code> (with <code>code</code>, <code>redirect_uri</code>, <code>client_id</code>, <code>code_verifier</code>) or <code>grant_type=refresh_token</code> (with <code>refresh_token</code>, <code>client_id</code>), form-encoded or JSON. The access token is a paired session (valid for SESSION_DAYS), the refresh token lasts twice that and is replaced on each use; &quot;Sign out everywhere&quot; ends both. CSRF-exempt.</p>
+    <p class="ep-auth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Public: no authentication required.</span></p>
+
+
+    <p class="ep-h">Responses</p>
+    <div class="ptab">
+  <div class="prow rrow">
+    <span class="r-code s2">200</span>
+    <span class="p-desc"><code>access_token</code>, <code>token_type</code>, <code>expires_in</code>, <code>refresh_token</code>.</span>
+  </div>
+  <div class="prow rrow">
+    <span class="r-code s4">400</span>
+    <span class="p-desc"><code>invalid_grant</code> or <code>unsupported_grant_type</code>.</span>
   </div>
     </div>
   </div>
@@ -1882,6 +1997,32 @@ main.api-main .lead { color: var(--fg-2); max-width: 58ch; margin: 14px 0 0; fon
   <div class="prow rrow">
     <span class="r-code s2">200</span>
     <span class="p-desc">Cancelled (or nothing was pending).<span class="r-sig"><a href="#schema-Ok">Ok</a></span></span>
+  </div>
+  <div class="prow rrow">
+    <span class="r-code s4">401</span>
+    <span class="p-desc">No session, expired/revoked session, or a disabled account.<span class="r-sig"><code>{&quot;error&quot;:&quot;not signed in&quot;}</code></span></span>
+  </div>
+    </div>
+  </div>
+</details>
+
+<details class="ep" id="op-cronTick">
+  <summary>
+    <span class="m post">POST</span>
+    <span class="ep-path"><code>/api/cron/tick</code></span>
+    <span class="ep-chev" aria-hidden="true"></span>
+    <span class="ep-sum">Run the timers (Postgres mode only)</span>
+  </summary>
+  <div class="ep-body">
+<p>Only registered when the API runs on Postgres (<code>DATABASE_URL</code> set, the Vercel + Supabase mode of docs/VERCEL_SUPABASE.md), where no process lives between requests to keep timers. Sends every rest-timer push that is due, runs the workout-day reminder and missed-workout nudge check, and prunes expired challenges, pairing codes, presence rows, counters and audit rows past retention. Called by Supabase pg_cron every minute, and every ten seconds while a rest timer is due. The credential is <code>Authorization: Bearer &lt;CRON_SECRET&gt;</code>; with no CRON_SECRET of at least 16 characters set, every call is refused.</p>
+    <p class="ep-auth"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Requires a session: the cookie set at sign-in, or <code>Authorization: Bearer &lt;token&gt;</code> from mobile-app pairing.</span></p>
+
+
+    <p class="ep-h">Responses</p>
+    <div class="ptab">
+  <div class="prow rrow">
+    <span class="r-code s2">200</span>
+    <span class="p-desc">Done. <code>rest</code> is how many rest-timer pushes were sent.<span class="r-sig">{ ok: boolean, rest: integer }</span></span>
   </div>
   <div class="prow rrow">
     <span class="r-code s4">401</span>

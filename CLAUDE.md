@@ -119,7 +119,7 @@ human-readable labels, `index.js` wires it together. With `OPENGYM_URL` and no `
 `GET /api/data` instead, re-fetching only when `GET /api/data/rev` moved. `review-tools.js` holds
 `training_review` / `recovery_status` / `find_exercise`. The write tools never write the file:
 `log_workout` (`write-tools.js`) builds the workout with `frontend/src/lib/log-workout.js`, and
-`plan-tools.js` (`log_bodyweight`, `apply_plan_changes` via `frontend/src/lib/coach.js`
+`plan-tools.js` (`log_bodyweight`, `log_sport` via `frontend/src/lib/sports.js`, `apply_plan_changes` via `frontend/src/lib/coach.js`
 applyChangeSet, `revert_last_plan_change`, `schedule_week` writing `S.queue`) goes through
 `profile-write.js` commitProfile; all save with `PUT /api/data` over a paired-session token
 (`api-client.js`, `scripts/pair.mjs`), the way a device syncs. See `mcp/README.md` for the

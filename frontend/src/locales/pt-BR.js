@@ -1543,6 +1543,23 @@ export const PT_BR_OVERRIDES = {
   'Copy command': 'Copiar comando',
   'The command holds a sign-in to your profile: keep it private. “Sign out everywhere” revokes it.': 'O comando contém um login no seu perfil: mantenha-o privado. “Sair de todos os dispositivos” o revoga.',
   'Could not create a token': 'Não foi possível criar um token',
+  // Sports logged away from the gym (lib/sports.js)
+  'Sport intensity': 'Intensidade do esporte',
+  'Not a sport': 'Não é um esporte',
+  'Moderate': 'Moderada',
+  'How hard it works the muscles you picked, per minute. Recovery uses it.': 'Quanto trabalha os músculos escolhidos por minuto. A recuperação leva isso em conta.',
+  'Log a sport': 'Registrar um esporte',
+  'A session away from the gym. It counts in recovery and your training review.': 'Uma sessão fora da academia. Conta na recuperação e no resumo do treino.',
+  'Other sport…': 'Outro esporte…',
+  'Effort (RPE)': 'Esforço (RPE)',
+  'Optional. 10 is all out; leave it empty for a usual session.': 'Opcional. 10 é no máximo; deixe vazio para uma sessão normal.',
+  'Pick a sport': 'Escolha um esporte',
+  'Enter a duration between 1 and {0} minutes': 'Digite uma duração entre 1 e {0} minutos',
+  'Already logged': 'Já registrado',
+  '{0} logged': '{0} registrado',
+  'Swimming': 'Natação',
+  'Climbing': 'Escalada',
+  'Padel': 'Padel',
 }
 
 export default { ...pt, ...PT_BR_OVERRIDES }

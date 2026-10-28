@@ -3,6 +3,8 @@
    read at, so it lands on every device the way a change made on the phone does.
 
    - log_bodyweight: a weigh-in for a day.
+   - log_sport: a session away from the gym (swimming, climbing, padel…), filed as the app's "Log a
+     sport" sheet files it (frontend/src/lib/sports.js), so recovery counts it.
    - apply_plan_changes: edits to the routines and the weekly plan, in the AI Coach's own change
      format and applied by the Coach's own code (frontend/src/lib/coach.js applyChangeSet). That
      buys three things for free: the closed list of change types the app knows how to apply, the
@@ -18,6 +20,11 @@ import { commitProfile, fail } from './profile-write.js'
 import { CHANGE_TYPES, validateProposal, markStale, applyChangeSet, revertLast, canRevert, changeTitle, changeValues } from '../../frontend/src/lib/coach.js'
 import { resolveExercise } from '../../frontend/src/lib/log-workout.js'
 import { weighInOn } from '../../frontend/src/lib/bodyweight.js'
+import { findSport, sportExercise, buildSportWorkout, SPORTS, SPORT_MAX_MIN } from '../../frontend/src/lib/sports.js'
+import { appendLoggedWorkout } from '../../frontend/src/lib/log-workout.js'
+import { importId } from '../../frontend/src/lib/import-csv.js'
+import { musclesOf } from '../../frontend/src/lib/muscles.js'
+import { muscleName } from './labels.js'
 import { queueOf, queueRemaining, queueView } from '../../frontend/src/lib/queue.js'
 import { effectiveRoutineIds } from '../../frontend/src/lib/history.js'
 
@@ -56,6 +63,63 @@ export const logBodyweight = {
   handler: (params, ctx) => {
     const now = Date.now()
     return commitProfile(S => applyWeighIn(S, params, { now }), ctx)
+  },
+}
+
+/* ---------- log_sport ---------- */
+
+/**
+ * The sport session filed into `S`, as log_sport answers. A ready-made sport the user has not used
+ * yet is created first, under `name` when given (the user's language), with an id that a retry
+ * of the same call names again. Pure over `S`; throws a coded error when nothing can be filed.
+ */
+export function applySport(S, { sport, minutes, rpe, date, note, name }, { now = Date.now(), today = localIso(new Date(now)) } = {}) {
+  const found = findSport(S, sport)
+  if (found.problem) throw fail('ENOTFOUND', `${found.problem}. The user's sports and the ready-made ones: ${found.candidates.join(', ')}. Another sport is created in the app (Log a sport → Other sport) first.`)
+  S.customEx = Array.isArray(S.customEx) ? S.customEx : []
+  let id = found.id
+  let created = null
+  if (found.create) {
+    id = importId('ms', found.create.key)
+    created = { ...sportExercise(found.create.key, id), n: String(name ?? '').trim().slice(0, 80) || found.create.n }
+    S.customEx.push(created)
+  }
+  const built = buildSportWorkout(S, { exerciseId: id, date: date || today, minutes, rpe, note }, { now, today })
+  if (built.problems) throw fail('EINVAL', built.problems.map(p => `${p.field} ${p.problem}`).join('; '))
+  // Filed as log_workout files one: the profile's own exercises indexed for the PR rebuild.
+  const added = withCustoms(S, () => appendLoggedWorkout(S, built, { now }))
+  const ex = S.customEx.find(c => c.id === id)
+  const result = {
+    logged: added.added,
+    ...(added.added ? {} : { reason: 'already logged: the same sport, day and minutes is on file' }),
+    date: built.workout.d,
+    sport: ex.n,
+    minutes: built.workout.entries[0].sets[0].min,
+    rpe: built.workout.entries[0].sets[0].rpe ?? null,
+    ...(created ? { sport_created: true } : {}),
+    muscles: Object.keys(musclesOf(ex)).map(muscleName),
+  }
+  return { changed: added.added, result }
+}
+
+export const logSport = {
+  name: 'log_sport',
+  description: [
+    'Log a sport session done away from the gym: swimming, climbing (bouldering), padel, or a cardio sport the user created in the app.',
+    'It is filed as one finished workout of minutes and effort, as the app\'s "Log a sport" sheet does, so recovery_status counts it on the muscles that sport works and training_review lists it under other_sports, apart from the gym work.',
+    'Today by default; a past day is filed at 18:00. Calling again with the same sport, day and minutes does not log it twice.',
+  ].join(' '),
+  schema: {
+    sport: z.string().min(1).max(80).describe(`The sport as the user said it: ${SPORTS.map(s => s.key).join(', ')} (or their usual words, e.g. "escalade", "natation"), or the name or id of a cardio sport the user created in the app.`),
+    minutes: z.number().int().min(1).max(SPORT_MAX_MIN).describe('How long the session lasted, in minutes.'),
+    rpe: z.number().min(1).max(10).optional().describe('How hard it felt, 1-10 (10 = all out). Leave out when the user did not say.'),
+    date: isoDate().optional().describe('YYYY-MM-DD the session was on; defaults to today. Not in the future.'),
+    note: z.string().max(500).optional().describe('A short note the user wants kept with the session.'),
+    name: z.string().max(80).optional().describe('Name for a ready-made sport used for the first time, in the user\'s language ("Escalade"). Ignored once it exists.'),
+  },
+  handler: (params, ctx) => {
+    const now = Date.now()
+    return commitProfile(S => applySport(S, params, { now }), ctx)
   },
 }
 
@@ -314,4 +378,4 @@ export const scheduleWeekTool = {
   },
 }
 
-export const PLAN_TOOLS = [logBodyweight, applyPlanChangesTool, revertLastPlanChange, scheduleWeekTool]
+export const PLAN_TOOLS = [logBodyweight, logSport, applyPlanChangesTool, revertLastPlanChange, scheduleWeekTool]
