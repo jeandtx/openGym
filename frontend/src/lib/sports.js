@@ -1,3 +1,7 @@
+import { buildCompletedWorkout } from './finish-workout.js'
+import { backfillStart } from './backfill.js'
+import { exerciseMuscleSnapshot } from './muscles.js'
+
 // Sports done outside the gym (swimming, climbing, padel), logged as one cardio row: minutes and
 // an RPE. recovery.js already scales a cardio row by its minutes and effort (CARDIO_MINUTES_PER_SET);
 // what a sport adds is the muscles it works and how hard they work per minute.
@@ -51,4 +55,61 @@ export function sportExercise(key, id) {
     tg: primaries[0], sm: [...secondaries],
     primaries: [...primaries], secondaries: [...secondaries], muscleGroups: [...primaries, ...secondaries],
   }
+}
+
+/** A sport is a cardio exercise that says how hard it works its muscles; a plain run says nothing. */
+export const isSportExercise = ex => !!ex && ex.bp === 'cardio' && ex.cardioDensity != null
+
+// The three steps the custom-exercise form offers for a sport's density, light to hard. A run is
+// light; climbing is hard (SPORTS above).
+export const SPORT_INTENSITIES = [
+  { key: 'light', label: 'Light', density: 1 },
+  { key: 'moderate', label: 'Moderate', density: 1.5 },
+  { key: 'hard', label: 'Hard', density: 3 },
+]
+
+/** The intensity step closest to `density`; null for a plain cardio exercise (no density at all). */
+export function intensityOf(density) {
+  if (density == null || density === '') return null
+  const d = cardioDensityOf({ cardioDensity: density })
+  return SPORT_INTENSITIES.reduce((a, b) => (Math.abs(b.density - d) < Math.abs(a.density - d) ? b : a)).key
+}
+
+export const SPORT_MAX_MIN = 12 * 60
+
+/**
+ * A finished session of one sport, ready for log-workout.js appendLoggedWorkout: one cardio row of
+ * `minutes` at `rpe` (1-10, optional) on the custom exercise `exerciseId`. Today it ends `now`;
+ * a past day starts at the backfill's 18:00. Returns `{ problems }` instead when the input is off.
+ */
+export function buildSportWorkout(S, { exerciseId, date, minutes, rpe = null, note = '' }, { now = Date.now(), today } = {}) {
+  const ex = (S?.customEx || []).find(c => c?.id === exerciseId)
+  const problems = []
+  if (!ex || ex.bp !== 'cardio') problems.push({ field: 'exerciseId', problem: 'is not one of your cardio exercises' })
+  const min = Math.round(Number(minutes))
+  if (!Number.isFinite(min) || min < 1 || min > SPORT_MAX_MIN) problems.push({ field: 'minutes', problem: `must be 1 to ${SPORT_MAX_MIN}` })
+  const effort = rpe == null || rpe === '' ? null : Number(rpe)
+  if (effort != null && !(Number.isFinite(effort) && effort >= 1 && effort <= 10)) problems.push({ field: 'rpe', problem: 'must be 1 to 10' })
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) problems.push({ field: 'date', problem: 'must be YYYY-MM-DD' })
+  else if (today && date > today) problems.push({ field: 'date', problem: 'is in the future' })
+  if (problems.length) return { problems }
+
+  const past = !!today && date < today
+  let start, end
+  if (past) {
+    start = backfillStart(date)
+    end = start + min * 60000
+  } else {
+    end = now
+    // A session that would begin before midnight is filed from midnight: it is today's.
+    start = Math.max(end - min * 60000, new Date(date + 'T00:00:00').getTime())
+  }
+  const set = { min, done: true, ...(effort != null ? { rpe: effort } : {}) }
+  const workout = buildCompletedWorkout(
+    { id: 'sp' + start.toString(36) + exerciseId, d: date, start, name: ex.n, bw: null, routineIds: [], note: String(note || '').trim().slice(0, 500),
+      entries: [{ id: exerciseId, sets: [set], target: { mode: 'cardio' } }] },
+    { end, prs: [], snapshotFor: () => exerciseMuscleSnapshot(ex) },
+  )
+  workout.vol = 0
+  return { workout, past, customEx: [] }
 }

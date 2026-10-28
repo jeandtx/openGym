@@ -31,6 +31,8 @@ import MuscleExplorer from './components/MuscleExplorer.jsx'
 import ExerciseViewToggle from './components/ExerciseViewToggle.jsx'
 import { sameMuscleFirst, swapMuscleOf } from './lib/similar-exercises.js'
 import { exerciseMuscleSnapshot, loadOfWorkouts, MUSCLES, MUSCLE_NAME, muscleWeightsOf, normalizeMuscleGroups, hasExplicitMuscleMetadata, inMuscleOrder } from './lib/muscles.js'
+import { SPORTS, SPORT_INTENSITIES, SPORT_MAX_MIN, intensityOf, isSportExercise, sportExercise, buildSportWorkout } from './lib/sports.js'
+import { appendLoggedWorkout } from './lib/log-workout.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { importHevyData, HevyApiError, HEVY_DEV_SETTINGS, mergeHevyRoutines } from './lib/import-hevy.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan, planPrintHTML } from './lib/plan-share.js'
@@ -1175,11 +1177,11 @@ export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex=
 // (planning, logging, PRs, stats). A photo, GIF or video of your own, and a link to a video or
 // guide, are optional (components/CustomMediaField.jsx): the state keeps a small reference to the
 // file, never the file itself, and the link is cleaned on save and again whenever it is opened.
-function CustomExForm({ existing, prefill, onDone, close }) {
+function CustomExForm({ existing, prefill, sport, onDone, close }) {
   const nameRef = useRef(null)
   const onNameFocus = useSheetKeyboard(nameRef)
   const [n, setN] = useState(existing ? existing.n : (prefill || ''))
-  const [bp, setBp] = useState(existing ? existing.bp : '')
+  const [bp, setBp] = useState(existing ? existing.bp : sport ? 'cardio' : '')
   const [eq, setEq] = useState(existing ? (existing.eq || '') : '')
   const storedEq = existing && typeof existing.eq === 'string' && existing.eq && !ALL_EQUIPMENT.includes(existing.eq) ? existing.eq : null
   const [desc, setDesc] = useState(existing ? (existing.desc || '') : '')
@@ -1194,9 +1196,10 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     if ('media' in patch) { setMedia(patch.media); setMediaTouched(true) }
     if ('url' in patch) setUrl(patch.url)
   }
+  // A cardio exercise saved without muscles stores the "cardiovascular system" placeholder; the
+  // picker shows only muscles the map draws, and save puts the placeholder back if none is picked.
   const [primaries, setPrimaries] = useState(() => {
-    if (existing && Array.isArray(existing.primaries) && existing.primaries.length) return [...existing.primaries]
-    if (existing?.bp === 'cardio') return ['cardiovascular system']
+    if (existing && Array.isArray(existing.primaries) && existing.primaries.length) return existing.primaries.filter(m => existing.bp !== 'cardio' || MUSCLES.includes(m))
     const norm = hasExplicitMuscleMetadata(existing || {}) ? normalizeMuscleGroups(existing || {}) : []
     return norm.length ? [norm[0]] : []
   })
@@ -1210,6 +1213,9 @@ function CustomExForm({ existing, prefill, onDone, close }) {
   // muscles are stored. The taps are the only record of the user's own order, and they decide the
   // target when the one the exercise had is un-ticked.
   const [primaryTaps, setPrimaryTaps] = useState([])
+  // How hard a sport works its muscles per minute (lib/sports.js); null keeps a plain cardio
+  // exercise that scores like a run.
+  const [intensity, setIntensity] = useState(() => (existing ? intensityOf(existing.cardioDensity) : sport ? 'moderate' : null))
   const togglePrimary = value => {
     setPrimaryTaps(current => [...current, value])
     setPrimaries(current => current.includes(value) ? current.filter(m => m !== value) : [...current, value])
@@ -1233,7 +1239,9 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     const ref = keepMedia ? null : normalizeMediaRef(media)
     // Stored in the map's order, not the order the chips were tapped in — the tags on the exercise
     // used to shuffle with every edit.
-    const prim = bp === 'cardio' ? ['cardiovascular system'] : inMuscleOrder(primaries)
+    const real = inMuscleOrder(primaries.filter(m => MUSCLES.includes(m)))
+    const prim = bp !== 'cardio' ? inMuscleOrder(primaries) : real.length ? real : ['cardiovascular system']
+    const density = bp === 'cardio' && intensity ? SPORT_INTENSITIES.find(i => i.key === intensity).density : null
     const sm = inMuscleOrder(secondaries.filter(m => !prim.includes(m)))
     const groups = [...prim, ...sm]
     // The one-word target (the library row, the picker, the Muscles view) is not the sorted list's
@@ -1247,6 +1255,7 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     const extra = c => {
       if (!keepMedia) { if (ref) c.media = ref; else delete c.media }
       if (link) c.url = link; else delete c.url
+      if (density != null) c.cardioDensity = density; else delete c.cardioDensity
     }
     if (existing) update(s => { const c = (s.customEx || []).find(x => x.id === id); if (c) {
       c.n = name; c.bp = bp; c.desc = d; c.tg = tg; c.sm = sm; c.muscleGroups = groups; c.primaries = prim; c.secondaries = sm; c.eq = eq
@@ -1277,17 +1286,24 @@ function CustomExForm({ existing, prefill, onDone, close }) {
       {storedEq && <button key={storedEq} className={'chip' + (eq === storedEq ? ' on' : '')} onClick={() => setEq(storedEq)}>{t(storedEq)}</button>}
     </div>
     {bp && <>
-      {bp !== 'cardio' && <MultiSelectRow title={t('Primary muscle groups')} sheetTitle={t('Primary muscle groups')}
+      <MultiSelectRow title={t('Primary muscle groups')} sheetTitle={t('Primary muscle groups')}
         values={primaries}
         options={MUSCLES.map(m => ({ value: m, label: t(MUSCLE_NAME[m]) }))}
         onToggle={togglePrimary} noneLabel={t('No explicit muscle group')} doneLabel={t('Done')} />
-      }
       <MultiSelectRow title={t('Additional muscle groups')} sheetTitle={t('Additional muscle groups')}
         values={secondaries}
         options={MUSCLES.filter(m => !primaries.includes(m)).map(m => ({ value: m, label: t(MUSCLE_NAME[m]) }))}
         onToggle={toggleSecondary} noneLabel={t('No explicit muscle group')} doneLabel={t('Done')} />
     </>}
     {bp === 'cardio' && <div className="small dim row" style={{ marginBottom: 10, gap: 5 }}><Icon name="figureRun" style={{ fontSize: 13 }} />{t('Cardio exercises log time + speed instead of weight × reps.')}</div>}
+    {bp === 'cardio' && <>
+      <h4 className="sec">{t('Sport intensity')}</h4>
+      <div className="chips" style={{ margin: '6px 0 4px' }}>
+        <button className={'chip' + (!intensity ? ' on' : '')} onClick={() => setIntensity(null)}>{t('Not a sport')}</button>
+        {SPORT_INTENSITIES.map(i => <button key={i.key} className={'chip' + (intensity === i.key ? ' on' : '')} onClick={() => setIntensity(i.key)}>{t(i.label)}</button>)}
+      </div>
+      <div className="small dim" style={{ marginBottom: 10 }}>{t('How hard it works the muscles you picked, per minute. Recovery uses it.')}</div>
+    </>}
     <textarea className="input" rows={4} maxLength={1000} placeholder={t('Description (optional): setup, cues, anything you want to remember')}
       value={desc} onChange={e => setDesc(e.target.value)} />
     <CustomMediaField media={media} url={url} onChange={onMedia} />
@@ -1296,7 +1312,64 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     {existing && <><div style={{ height: 8 }} /><Button variant="danger" icon="trash" onClick={() => { close(); deleteCustomEx(existing) }}>{t('Delete exercise')}</Button></>}
   </>
 }
-export const customExSheet = (existing, onDone, prefill) => ui().openSheet(close => <CustomExForm existing={existing} prefill={prefill} onDone={onDone} close={close} />)
+// `sport` opens a new one as a sport: cardio, moderate intensity (the Log a sport sheet's "Other sport").
+export const customExSheet = (existing, onDone, prefill, { sport = false } = {}) => ui().openSheet(close => <CustomExForm existing={existing} prefill={prefill} sport={sport} onDone={onDone} close={close} />)
+
+/* ============================ log a sport ============================ */
+// Swimming, climbing, padel: a session done away from the gym, filed as a finished workout of one
+// cardio row (lib/sports.js) so recovery, the history and the monthly review all see it. The ready-
+// made sports are created as custom exercises the first time they are picked; "Other sport" is the
+// custom-exercise form, which comes back here once saved.
+const SPORT_RPES = [5, 6, 7, 8, 9, 10]
+function SportSheet({ initialId, close }) {
+  const st = useStore(s => s.S)
+  const mine = (st.customEx || []).filter(isSportExercise)
+  const [picked, setPicked] = useState(() => initialId || mine[0]?.id || null)
+  const [date, setDate] = useState(todayISO())
+  const [minutes, setMinutes] = useState(60)
+  const [rpe, setRpe] = useState(null)
+  const named = name => mine.some(c => String(c.n || '').trim().toLowerCase() === name.toLowerCase())
+  const presets = SPORTS.filter(sp => !named(t(sp.n)))
+  const addPreset = sport => {
+    const id = 'c' + uid()
+    update(s => { (s.customEx = s.customEx || []).push({ ...sportExercise(sport.key, id), n: t(sport.n) }) })
+    setPicked(id)
+  }
+  const other = () => { close(); customExSheet(null, ex => sportSheet(ex?.id), '', { sport: true }) }
+  const save = () => {
+    if (!picked) { toast(t('Pick a sport')); return }
+    const now = Date.now()
+    const built = buildSportWorkout(S(), { exerciseId: picked, date, minutes, rpe }, { now, today: todayISO() })
+    const field = built.problems?.[0]?.field
+    if (field) { toast(field === 'date' ? t('Choose a valid date') : field === 'exerciseId' ? t('Pick a sport') : t('Enter a duration between 1 and {0} minutes', SPORT_MAX_MIN)); return }
+    let res = null
+    update(s => { res = appendLoggedWorkout(s, built, { now }) })
+    close()
+    toast(res && !res.added ? t('Already logged') : t('{0} logged', built.workout.name))
+  }
+  return <>
+    <h3>{t('Log a sport')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('A session away from the gym. It counts in recovery and your training review.')}</div>
+    <div className="chips" style={{ margin: '0 0 12px' }}>
+      {mine.map(c => <button key={c.id} className={'chip' + (picked === c.id ? ' on' : '')} onClick={() => setPicked(c.id)}>{c.n}</button>)}
+      {presets.map(sp => <button key={sp.key} className="chip" onClick={() => addPreset(sp)}>{'+ ' + t(sp.n)}</button>)}
+      <button className="chip" onClick={other}>{t('Other sport…')}</button>
+    </div>
+    <label className="measure-date">
+      <span>{t('Date')}</span>
+      <input className="field" type="date" value={date} max={todayISO()} onChange={e => setDate(e.target.value)} />
+    </label>
+    <Stepper label={t('Duration (min)')} value={minutes} step={5} min={5} max={SPORT_MAX_MIN} decimal={false} onChange={setMinutes} />
+    <h4 className="sec">{t('Effort (RPE)')}</h4>
+    <div className="chips" style={{ margin: '6px 0 4px' }}>
+      {SPORT_RPES.map(n => <button key={n} className={'chip' + (rpe === n ? ' on' : '')} onClick={() => setRpe(rpe === n ? null : n)}>{n}</button>)}
+    </div>
+    <div className="small dim">{t('Optional. 10 is all out; leave it empty for a usual session.')}</div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Save')}</Button>
+  </>
+}
+export const sportSheet = initialId => ui().openSheet(close => <SportSheet initialId={initialId} close={close} />)
 
 export function deleteCustomEx(ex, afterDelete) {
   if (S().active?.entries.some(e => e.id === ex.id)) { toast(t('Finish your current workout first')); return }
