@@ -4,7 +4,8 @@
 
    - training_review: one period (the last four weeks by default) against the period before it —
      sessions, volume, effort, per-muscle work, per-exercise estimated 1RM and what moved, PRs,
-     body weight.
+     body weight. Sport sessions (swimming, climbing, padel: lib/sports.js) are counted apart, in
+     `other_sports`, so they neither inflate the gym's sessions nor water down its effort.
    - recovery_status: the Stats screen's per-muscle fatigue and retained strength, today.
    - find_exercise: an exercise name to the library id the write tools take.
 
@@ -23,6 +24,7 @@ import { fatigueStateOf } from '../../frontend/src/lib/recovery-view.js'
 import { weekKey, weekStartOf } from '../../frontend/src/lib/format.js'
 import { resolveExercise } from '../../frontend/src/lib/log-workout.js'
 import { EXIDX } from '../../frontend/src/lib/exercises.js'
+import { isSportWorkout } from '../../frontend/src/lib/sports.js'
 
 const localIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return localIso(d) }
@@ -66,6 +68,39 @@ function totalsOf(workouts) {
   }
 }
 
+/**
+ * The sport sessions of a period (isSportWorkout) against the previous one: sessions, minutes and
+ * average RPE, per sport and per week. Minutes are the logged ones, the session's length otherwise.
+ */
+function sportsOf(workouts, previous, ws) {
+  const minutesOf = w => {
+    const logged = (w.entries || []).reduce((n, e) => n + workRows(e).reduce((m, s) => m + (Number(s.min) || 0), 0), 0)
+    return Math.round(logged || (w.end > w.start ? (w.end - w.start) / 60000 : 0))
+  }
+  const rpesOf = w => (w.entries || []).flatMap(e => workRows(e).map(s => Number(s.rpe)).filter(Number.isFinite))
+  const avg = a => (a.length ? r1(a.reduce((x, y) => x + y, 0) / a.length) : null)
+  const bySport = new Map(), weeks = new Map()
+  for (const w of workouts) {
+    const first = w.entries[0]
+    const name = (EXIDX[first.id] || first.muscleSnapshot)?.n || w.name || 'Sport'
+    const x = bySport.get(name) || { sport: name, sessions: 0, minutes: 0, rpes: [] }
+    x.sessions++; x.minutes += minutesOf(w); x.rpes.push(...rpesOf(w))
+    bySport.set(name, x)
+    const k = weekKey(w.d, ws)
+    const y = weeks.get(k) || { week_start: k, sessions: 0, minutes: 0 }
+    y.sessions++; y.minutes += minutesOf(w)
+    weeks.set(k, y)
+  }
+  return {
+    sessions: workouts.length,
+    minutes: workouts.reduce((n, w) => n + minutesOf(w), 0),
+    avg_rpe: avg(workouts.flatMap(rpesOf)),
+    by_sport: [...bySport.values()].map(({ rpes, ...x }) => ({ ...x, avg_rpe: avg(rpes) })).sort((a, b) => b.minutes - a.minutes),
+    weeks: [...weeks.values()],
+    previous_period: { sessions: previous.length, minutes: previous.reduce((n, w) => n + minutesOf(w), 0) },
+  }
+}
+
 /** Per exercise over a list of workouts (oldest first): sessions, sets and the e1RM of each session. */
 function exercisesOf(S, workouts, formula) {
   const by = new Map()
@@ -99,11 +134,13 @@ export function reviewOf(S, { from, to, formula = DEFAULT_FORMULA, top = 15 } = 
   const unit = S.unit === 'lb' ? 'lb' : 'kg'
   const sorted = (S.workouts || []).filter(w => w && typeof w.d === 'string').slice().sort((a, b) => workoutAt(a) - workoutAt(b))
   const inRange = (a, b) => sorted.filter(w => w.d >= a && w.d <= b)
-  const now = inRange(start, end)
-  const prev = inRange(prevStart, prevEnd)
-  const before = sorted.filter(w => w.d < start)
 
   return withCustomsIndexed(S, () => {
+    // The gym work, which everything below measures; sport sessions go to other_sports.
+    const gym = w => !isSportWorkout(w)
+    const now = inRange(start, end).filter(gym)
+    const prev = inRange(prevStart, prevEnd).filter(gym)
+    const before = sorted.filter(w => w.d < start && gym(w))
     const cur = totalsOf(now)
     const old = totalsOf(prev)
     const ws = weekStartOf(S)
@@ -203,6 +240,7 @@ export function reviewOf(S, { from, to, formula = DEFAULT_FORMULA, top = 15 } = 
       prs,
       muscles,
       muscles_not_trained: missed.map(slug => ({ slug, name: muscleName(slug) })),
+      other_sports: sportsOf(inRange(start, end).filter(isSportWorkout), inRange(prevStart, prevEnd).filter(isSportWorkout), ws),
       bodyweight: {
         goal: S.targetW ?? null,
         weigh_ins: bw.length,
@@ -223,6 +261,7 @@ export const trainingReview = {
     '`training` (sessions, sessions per week vs the weekly plan, volume, sets, average duration, effort: share of sets to failure, average RIR/RPE, week by week),',
     '`exercises` (most-trained first: sessions, sets, estimated 1RM best / first / last in the period, change vs the previous period, trend up/flat/down/new, last top set),',
     '`stalled` (trained 3+ times with no gain), `dropped_since_previous_period`, `prs`, `muscles` (effective sets per muscle and per week, change vs the previous period), `muscles_not_trained`, and `bodyweight` (first, last, change, mean vs goal).',
+    'All of that is gym work only: sport sessions (swimming, climbing, padel… logged with log_sport or the app\'s "Log a sport") are in `other_sports` (sessions, minutes, average RPE, per sport and per week, vs the previous period). They still count in recovery_status.',
     'For the next week\'s plan, read recovery_status and get_week_plan too.',
   ].join(' '),
   schema: {

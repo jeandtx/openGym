@@ -1329,7 +1329,7 @@ function SportSheet({ initialId, close }) {
   const [minutes, setMinutes] = useState(60)
   const [rpe, setRpe] = useState(null)
   const named = name => mine.some(c => String(c.n || '').trim().toLowerCase() === name.toLowerCase())
-  const presets = SPORTS.filter(sp => !named(t(sp.n)))
+  const presets = SPORTS.filter(sp => !mine.some(c => c.sport === sp.key) && !named(t(sp.n)))
   const addPreset = sport => {
     const id = 'c' + uid()
     update(s => { (s.customEx = s.customEx || []).push({ ...sportExercise(sport.key, id), n: t(sport.n) }) })

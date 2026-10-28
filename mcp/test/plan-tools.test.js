@@ -4,7 +4,8 @@
 // the PUT carries and how a conflict is retried.
 import { describe, test, expect, afterEach } from 'vitest'
 import http from 'node:http'
-import { applyWeighIn, applyPlanChanges, revertPlan, scheduleWeek, logBodyweight, applyPlanChangesTool, scheduleWeekTool, revertLastPlanChange } from '../src/plan-tools.js'
+import { applyWeighIn, applyPlanChanges, revertPlan, scheduleWeek, logBodyweight, applyPlanChangesTool, scheduleWeekTool, revertLastPlanChange, applySport, logSport } from '../src/plan-tools.js'
+import { recoveryOf } from '../src/review-tools.js'
 import { _seedStateForTests } from '../src/state.js'
 import { queueOf, queueRemaining } from '../../frontend/src/lib/queue.js'
 
@@ -222,6 +223,44 @@ function stubApi(doc, { conflicts = 0 } = {}) {
 }
 afterEach(() => api?.server.close())
 
+describe('applySport', () => {
+  test('a ready-made sport used for the first time is created under the user\'s name for it', () => {
+    const S = profile()
+    const r = applySport(S, { sport: 'escalade', minutes: 90, rpe: 8, date: '2026-10-25', name: 'Escalade' }, opts)
+    expect(r.changed).toBe(true)
+    expect(r.result).toMatchObject({ logged: true, date: '2026-10-25', sport: 'Escalade', minutes: 90, rpe: 8, sport_created: true })
+    expect(r.result.muscles).toEqual(expect.arrayContaining(['Forearms', 'Upper back', 'Biceps']))
+    expect(S.customEx).toHaveLength(1)
+    expect(S.customEx[0]).toMatchObject({ n: 'Escalade', sport: 'climbing', bp: 'cardio', cardioDensity: 3 })
+    expect(S.workouts).toHaveLength(1)
+    expect(S.workouts[0]).toMatchObject({ d: '2026-10-25', name: 'Escalade', entries: [{ id: S.customEx[0].id, sets: [{ min: 90, rpe: 8, done: true }] }] })
+  })
+
+  test('the next one reuses it, and the same session again is not filed twice', () => {
+    const S = profile()
+    applySport(S, { sport: 'climbing', minutes: 60, date: '2026-10-20' }, opts)
+    const again = applySport(S, { sport: 'bloc', minutes: 75, date: '2026-10-23' }, opts)
+    expect(again.result.sport_created).toBeUndefined()
+    expect(S.customEx).toHaveLength(1)
+    expect(applySport(S, { sport: 'bloc', minutes: 75, date: '2026-10-23' }, opts)).toMatchObject({ changed: false, result: { logged: false } })
+    expect(S.workouts).toHaveLength(2)
+  })
+
+  test('the session shows up in recovery on the sport\'s muscles', () => {
+    const S = profile()
+    applySport(S, { sport: 'climbing', minutes: 90, rpe: 8 }, opts)
+    const rec = recoveryOf(S, NOW + 3600000)
+    expect(rec.fatigued).toEqual(expect.arrayContaining(['Forearms', 'Upper back']))
+    expect(rec.fatigued).not.toContain('Quads')
+  })
+
+  test('an unknown sport or a bad session says why and changes nothing', () => {
+    const S = profile()
+    expect(() => applySport(S, { sport: 'curling', minutes: 60 }, opts)).toThrow(/curling.*climbing/)
+    expect(() => applySport(S, { sport: 'padel', minutes: 60, date: '2026-10-27' }, opts)).toThrow(/future/)
+  })
+})
+
 describe('the write tools through the server', () => {
   test('log_bodyweight PUTs the document as sent plus the weigh-in, unstamped, over the revision read', async () => {
     _seedStateForTests(profile())
@@ -235,6 +274,16 @@ describe('the write tools through the server', () => {
     const { bodyweight: b0, ...rest0 } = profile()
     expect(rest).toEqual(rest0)
     expect(bodyweight.map(b => b.d)).toEqual(['2026-10-20', '2026-10-25'])
+  })
+
+  test('log_sport PUTs the session and its new sport', async () => {
+    _seedStateForTests(profile())
+    api = await stubApi(profile())
+    const r = await logSport.handler({ sport: 'natation', minutes: 45, rpe: 6, date: '2026-10-24', name: 'Natation' }, { env: api.env })
+    expect(r).toMatchObject({ logged: true, sport: 'Natation', minutes: 45, sport_created: true, revision: 4 })
+    expect(api.puts).toHaveLength(1)
+    expect(api.doc.customEx.map(c => c.sport)).toEqual(['swimming'])
+    expect(api.doc.workouts.map(w => [w.d, w.name])).toEqual([['2026-10-24', 'Natation']])
   })
 
   test('a conflict is built again on the document the server sent back', async () => {

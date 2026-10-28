@@ -9,6 +9,8 @@ import {
   cardioDensityOf,
   intensityOf,
   isSportExercise,
+  isSportWorkout,
+  findSport,
   sportExercise,
 } from './sports.js'
 import { MUSCLES, exerciseMuscleSnapshot, musclesOf } from './muscles.js'
@@ -45,8 +47,9 @@ describe('SPORTS', () => {
 
   it('builds a cardio custom exercise whose muscles are the sport\'s own', () => {
     const climbing = sportExercise('climbing', 'c1')
-    expect(climbing).toMatchObject({ id: 'c1', n: 'Climbing', bp: 'cardio', custom: true, cardioDensity: 3 })
+    expect(climbing).toMatchObject({ id: 'c1', n: 'Climbing', bp: 'cardio', custom: true, cardioDensity: 3, sport: 'climbing' })
     expect(climbing.key).toBeUndefined()
+    expect(climbing.aliases).toBeUndefined()
     expect(musclesOf(climbing)).toEqual({ forearm: 1, 'upper-back': 1, biceps: 1, deltoids: 0.4, abs: 0.4 })
     expect(sportExercise('curling', 'x')).toBeNull()
   })
@@ -121,6 +124,55 @@ describe('buildSportWorkout', () => {
       const fatigue = fatigueOf(state.workouts, NOW)
       expect(fatigue.forearm).toBeGreaterThan(0.5)
       expect(fatigue.quadriceps).toBe(0)
+    } finally {
+      registerCustom([])
+    }
+  })
+})
+
+describe('findSport', () => {
+  const S = {
+    customEx: [
+      { ...sportExercise('climbing', 'cl'), n: 'Escalade' },
+      { id: 'sq', n: 'Squash', bp: 'cardio', cardioDensity: 1.5, primaries: ['quadriceps'] },
+      { id: 'tm', n: 'Treadmill walk', bp: 'cardio' },
+      { id: 'bp', n: 'Bench', bp: 'chest' },
+    ],
+  }
+
+  it('finds a ready-made sport by key, English name or alias, whatever the user named it', () => {
+    for (const ref of ['climbing', 'Climbing', 'escalade', 'BLOC', 'bouldering']) expect(findSport(S, ref)).toEqual({ id: 'cl' })
+  })
+
+  it('offers to create a ready-made sport the user has not used yet', () => {
+    expect(findSport(S, 'natation').create.key).toBe('swimming')
+    expect(findSport(S, 'Pádel').create.key).toBe('padel')
+  })
+
+  it('finds the user\'s own cardio exercises by id or name, never a lift', () => {
+    expect(findSport(S, 'sq')).toEqual({ id: 'sq' })
+    expect(findSport(S, 'squash')).toEqual({ id: 'sq' })
+    expect(findSport(S, 'treadmill walk')).toEqual({ id: 'tm' })
+    expect(findSport(S, 'Bench').problem).toMatch(/Bench/)
+  })
+
+  it('lists what it knows when nothing matches', () => {
+    const r = findSport(S, 'curling')
+    expect(r.problem).toMatch(/curling/)
+    expect(r.candidates).toEqual(['Escalade', 'Squash', 'swimming', 'climbing', 'padel'])
+    expect(findSport(S, '  ').problem).toBe('no sport given')
+  })
+})
+
+describe('isSportWorkout', () => {
+  it('is a session made only of sports, read from the library or a deleted one\'s snapshot', () => {
+    registerCustom([sportExercise('padel', 'pa')])
+    try {
+      expect(isSportWorkout({ entries: [{ id: 'pa', sets: [] }] })).toBe(true)
+      expect(isSportWorkout({ entries: [{ id: 'pa' }, { id: '0025' }] })).toBe(false)
+      expect(isSportWorkout({ entries: [{ id: 'gone', muscleSnapshot: { bp: 'cardio', cardioDensity: 3 } }] })).toBe(true)
+      expect(isSportWorkout({ entries: [{ id: '0685' }] })).toBe(false)
+      expect(isSportWorkout({ entries: [] })).toBe(false)
     } finally {
       registerCustom([])
     }

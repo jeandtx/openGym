@@ -103,7 +103,7 @@ Ce qui sert à la découverte : un 401 de `/api/mcp` pointe vers
 | Lecture | Écriture (toujours après ton accord) |
 |---|---|
 | `list_routines`, `get_routine`, `preview_session` (poids réels de la prochaine séance), `get_week_plan` | `log_workout` : une séance décrite en langage naturel |
-| `list_workouts`, `get_workout`, `get_bodyweight`, `estimate_1rm`, `muscle_balance` | `log_bodyweight` : une pesée |
+| `list_workouts`, `get_workout`, `get_bodyweight`, `estimate_1rm`, `muscle_balance` | `log_bodyweight` : une pesée · **`log_sport`** : une séance de natation, d'escalade, de padel… (durée et RPE) |
 | **`training_review`** : bilan d'une période face à la précédente | **`apply_plan_changes`** : modifier les routines et le planning hebdo (tout ou rien, avec un instantané pris avant) |
 | **`recovery_status`** : fatigue et récupération par muscle | **`revert_last_plan_change`** : annuler le dernier changement de plan |
 | **`find_exercise`** : nom → id dans la bibliothèque | **`schedule_week`** : la semaine suivante en « coach week » (séances dans l'ordre, épinglables à une date) |
@@ -115,6 +115,9 @@ Exemples :
   proposition, accord, application.
 - « J'ai fait 3×8 au développé couché à 80 kg, la dernière à l'échec » → `log_workout`.
 - « Pesée ce matin : 79,4 » → `log_bodyweight`.
+- « 1h30 de bloc hier, RPE 8 » → `log_sport`. La séance compte dans `recovery_status` sur les
+  muscles du sport (avant-bras, dos, biceps pour l'escalade) et apparaît à part dans
+  `training_review`, sous `other_sports`, sans gonfler les séances de muscu.
 - « Mon squat stagne ? » → `training_review` puis `estimate_1rm`.
 
 ## Comment ça écrit

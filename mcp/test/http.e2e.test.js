@@ -74,7 +74,7 @@ describe.skipIf(!HAVE_API)('the MCP endpoint over HTTP', () => {
   test('each token reads its own profile, and writes land in it', async () => {
     const a = await connect(mint('ua'))
     const b = await connect(mint('ub'))
-    expect((await a.listTools()).tools.length).toBe(17)
+    expect((await a.listTools()).tools.length).toBe(18)
     expect((await call(a, 'list_routines')).routines.map(r => r.name)).toEqual(['Push of A'])
     expect((await call(b, 'list_routines')).routines.map(r => r.name)).toEqual(['Pull of B'])
     // two at once: one instance serves them one after the other, never mixed

@@ -1,6 +1,7 @@
 import { buildCompletedWorkout } from './finish-workout.js'
 import { backfillStart } from './backfill.js'
 import { exerciseMuscleSnapshot } from './muscles.js'
+import { EXIDX, normalizeStr } from './exercises.js'
 
 // Sports done outside the gym (swimming, climbing, padel), logged as one cardio row: minutes and
 // an RPE. recovery.js already scales a cardio row by its minutes and effort (CARDIO_MINUTES_PER_SET);
@@ -29,29 +30,36 @@ export function cardioDensityOf(ex) {
 
 // Ready-made sports, as custom exercises: `bp: 'cardio'` so they log minutes and speed, with
 // explicit muscles so recovery shades the right ones. Names stay English like the catalogue; the
-// screens translate them.
+// screens translate them. `aliases` are the words someone may use for it when telling Claude
+// (findSport), in the languages the users speak most.
 export const SPORTS = [
   {
     key: 'swimming', n: 'Swimming', bp: 'cardio', eq: 'body weight', cardioDensity: 1.5,
+    aliases: ['swim', 'natation', 'piscine', 'nage', 'natacion', 'schwimmen', 'nuoto', 'natacao'],
     primaries: ['upper-back', 'deltoids'], secondaries: ['triceps', 'chest'],
   },
   {
     key: 'climbing', n: 'Climbing', bp: 'cardio', eq: 'body weight', cardioDensity: 3,
+    aliases: ['bouldering', 'boulder', 'escalade', 'bloc', 'grimpe', 'escalada', 'klettern', 'bouldern', 'arrampicata'],
     primaries: ['forearm', 'upper-back', 'biceps'], secondaries: ['deltoids', 'abs'],
   },
   {
     key: 'padel', n: 'Padel', bp: 'cardio', eq: 'body weight', cardioDensity: 1.5,
+    aliases: ['paddle tennis'],
     primaries: ['quadriceps', 'calves', 'gluteal'], secondaries: ['deltoids', 'forearm', 'obliques'],
   },
 ]
 
-/** A custom exercise for the sport `key`, ready to push to `S.customEx`; null for an unknown key. */
+/**
+ * A custom exercise for the sport `key`, ready to push to `S.customEx`; null for an unknown key.
+ * It keeps `sport: key`, so it is found again whatever name it was given (findSport).
+ */
 export function sportExercise(key, id) {
   const sport = SPORTS.find(s => s.key === key)
   if (!sport) return null
-  const { key: _key, primaries, secondaries, ...rest } = sport
+  const { key: _key, aliases: _aliases, primaries, secondaries, ...rest } = sport
   return {
-    ...rest, id, custom: true, desc: '',
+    ...rest, id, sport: key, custom: true, desc: '',
     tg: primaries[0], sm: [...secondaries],
     primaries: [...primaries], secondaries: [...secondaries], muscleGroups: [...primaries, ...secondaries],
   }
@@ -112,4 +120,39 @@ export function buildSportWorkout(S, { exerciseId, date, minutes, rpe = null, no
   )
   workout.vol = 0
   return { workout, past, customEx: [] }
+}
+
+/**
+ * One of the user's sports from what they called it: an exercise id, a ready-made sport (its key,
+ * English name or an alias: "escalade" is climbing), or the name of a cardio exercise of their
+ * own. `{ id }` when they have it, `{ create: sport }` for a ready-made sport they have not used
+ * yet, `{ problem, candidates }` otherwise.
+ */
+export function findSport(S, ref) {
+  const own = (S?.customEx || []).filter(c => c && c.bp === 'cardio')
+  const raw = String(ref ?? '').trim()
+  if (!raw) return { problem: 'no sport given', candidates: sportCandidates(own) }
+  const byId = own.find(c => c.id === raw)
+  if (byId) return { id: byId.id }
+  const q = normalizeStr(raw)
+  const preset = SPORTS.find(sp => [sp.key, sp.n, ...sp.aliases].some(w => normalizeStr(w) === q))
+  if (preset) {
+    const words = [preset.key, preset.n, ...preset.aliases].map(normalizeStr)
+    const mine = own.find(c => c.sport === preset.key) || own.find(c => words.includes(normalizeStr(c.n)))
+    return mine ? { id: mine.id } : { create: preset }
+  }
+  const named = own.find(c => normalizeStr(c.n) === q)
+  if (named) return { id: named.id }
+  return { problem: `no sport called "${raw}"`, candidates: sportCandidates(own) }
+}
+const sportCandidates = own => [...new Set([...own.filter(isSportExercise).map(c => c.n), ...SPORTS.map(sp => sp.key)])]
+
+/**
+ * Whether a finished workout is a sport session: every entry is a sport (isSportExercise), read
+ * from the library or, for a deleted one, the snapshot the entry kept. A gym session with a sport
+ * entry in it is still a gym session.
+ */
+export function isSportWorkout(w) {
+  const entries = w?.entries || []
+  return entries.length > 0 && entries.every(e => isSportExercise(EXIDX[e?.id] || e?.muscleSnapshot))
 }
