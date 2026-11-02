@@ -1095,7 +1095,7 @@ export const exerciseDetailSheet = ex => ui().openSheet(close => <ExerciseDetail
 // without leaving the workout for Stats. Derived once per log change — the sheet re-renders on
 // every store tick while a session runs, and LineChart drops its hover whenever `points`
 // changes identity, so a series rebuilt per render would lose the tooltip under your finger.
-function ExerciseHistory({ exId }) {
+function ExerciseHistory({ exId, close }) {
   const st = useStore(s => s.S)
   const ex = exOr(exId)
   const h = useMemo(() => exerciseHistory(st, exId), [st.workouts, exId])
@@ -1124,6 +1124,9 @@ function ExerciseHistory({ exId }) {
       <Icon name="trophy" style={{ fontSize: 14, color: 'var(--yellow)' }} />
       {t('Best:')} <b className="accent">{fmtNum(onE1 ? e1Best : h.best)} {onE1 ? st.unit : unit}</b>
     </div>
+    {/* Every session of it drawn as bars, with the change from one to the next (Visualize). */}
+    {close && <Button size="sm" variant="tinted" icon="chartLine" style={{ marginTop: 8 }}
+      onClick={() => closeThenNav(close, '/visualize/exercise/' + encodeURIComponent(exId))}>{t('Evolution')}</Button>}
     <h4 className="sec">{h.sessions.length < h.total ? t('Last {0} sessions', h.sessions.length) : t('Sessions')}</h4>
     <div className="list">
       {h.sessions.map(s => <div key={s.id} className="item" style={{ alignItems: 'flex-start' }}>
@@ -2761,7 +2764,10 @@ function WorkoutDetail({ w, close }) {
   const grouped = groups.length > 1 || (groups[0] && groups[0].rid && (w.routineIds || []).length > 1)
   return <>
     <h3>{w.name}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
+    <div className="muted small" style={{ marginBottom: 8 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
+    {/* The same session drawn set by set: timeline, rests, one chart per exercise. */}
+    <Button size="sm" variant="tinted" icon="chartLine" style={{ marginBottom: 12 }}
+      onClick={() => closeThenNav(close, '/visualize/session/' + encodeURIComponent(w.id))}>{t('Visualize')}</Button>
     {grouped ? groups.map(g => {
       const r = g.rid ? st.routines.find(x => x.id === g.rid) : null
       const items = g.items.map(i => w.entries[i])

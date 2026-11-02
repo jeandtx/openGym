@@ -46,6 +46,9 @@ import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout from './views/Workout.jsx'
 import Stats from './views/Stats.jsx'
 import History from './views/History.jsx'
+import Visualize from './views/Visualize.jsx'
+import VisualizeSession from './views/VisualizeSession.jsx'
+import VisualizeExercise from './views/VisualizeExercise.jsx'
 import Library from './views/Library.jsx'
 import Muscles from './views/Muscles.jsx'
 import StructuralBalance from './views/StructuralBalance.jsx'
@@ -253,6 +256,9 @@ function Shell() {
       <Route path="/workout" element={<Workout />} />
       <Route path="/stats" element={<Stats />} />
       <Route path="/history" element={<History />} />
+      <Route path="/visualize" element={<Visualize />} />
+      <Route path="/visualize/session/:id" element={<VisualizeSession />} />
+      <Route path="/visualize/exercise/:exId" element={<VisualizeExercise />} />
       <Route path="/library" element={<Library />} />
       <Route path="/muscles" element={<Muscles />} />
       <Route path="/structural-balance" element={<StructuralBalance />} />

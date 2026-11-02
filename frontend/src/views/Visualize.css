@@ -1,0 +1,59 @@
+/* Visualize: a session drawn set by set, and an exercise over its sessions. */
+.viz-tiles{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.viz-tiles .tile .v{font-variant-numeric:tabular-nums}
+.viz-tiles .tile .v small{font-size:13px;font-weight:400;color:var(--label-2);letter-spacing:0;margin-inline-start:4px}
+.viz-hint{color:var(--label-2);font-size:13px;line-height:1.4;margin:0 0 10px}
+.viz-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--label-2);margin-bottom:8px}
+.viz-legend span{display:inline-flex;align-items:center;gap:6px}
+.viz-legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
+
+.viz-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
+.viz-tl{position:relative;min-width:860px}
+.viz-tl svg,.viz-bars svg{display:block;width:100%;height:auto;overflow:visible}
+.viz-bars{position:relative}
+.viz-grid{stroke:var(--sep);stroke-width:1}
+.viz-base{stroke:var(--label-3);stroke-width:1}
+.viz-stripe{fill:var(--surface-2);fill-opacity:.5}
+.viz-ax{fill:var(--label-3);font-size:10.5px;font-variant-numeric:tabular-nums}
+.viz-lane{fill:var(--label-2);font-size:12px;font-weight:500}
+.viz-num{font-variant-numeric:tabular-nums}
+.viz-val{fill:var(--label);font-size:10px;font-variant-numeric:tabular-nums}
+.viz-hit{fill:transparent;cursor:pointer;outline:none}
+.viz-rest{fill:var(--label-3);fill-opacity:.32}
+.viz-rest-w{fill-opacity:.16}
+.viz-over{fill:var(--orange);fill-opacity:.75}
+.viz-switch{fill:var(--sep)}
+.viz-break{fill:none;stroke:var(--label-3);stroke-dasharray:3 3}
+.viz-tip{
+  position:absolute;pointer-events:none;z-index:2;transform:translate(-50%,calc(-100% - 10px));
+  background:var(--label);color:var(--bg);font-size:12px;line-height:1.35;padding:6px 9px;border-radius:8px;
+  white-space:nowrap;max-width:min(92vw,420px);overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;
+}
+
+.viz-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin-bottom:12px}
+.viz-cards .card{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.viz-card-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.viz-card-name{font-weight:600;display:flex;align-items:center;gap:7px;min-width:0}
+.viz-card-name>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viz-dot{width:10px;height:10px;border-radius:3px;flex:none;display:inline-block}
+.viz-card-vol{font-size:12px;color:var(--label-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.viz-card-tag{font-size:12px;color:var(--label-2)}
+.viz-card-tag .icn{display:inline-block;vertical-align:-2px;font-size:12px}
+.viz-card-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--label-2)}
+
+.viz-table{overflow-x:auto}
+.viz-table table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px;font-variant-numeric:tabular-nums}
+.viz-table th,.viz-table td{text-align:start;padding:6px 12px 6px 0;border-bottom:var(--hair) solid var(--sep);white-space:nowrap}
+.viz-table th{color:var(--label-2);font-weight:400;font-size:12px}
+.viz-details summary{cursor:pointer;color:var(--label-2);font-size:14px}
+
+.viz-delta{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.viz-up{color:var(--green)}
+.viz-down{color:var(--red)}
+.viz-flat{color:var(--label-2)}
+.viz-trend{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.viz-trend .big{font-variant-numeric:tabular-nums}
+.viz-info{border:0;background:none;color:var(--acc);padding:0 2px;font-size:15px;cursor:pointer;display:inline-flex;align-items:center}
+.viz-excluded{opacity:.55}
+.viz-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x proximity}
+.viz-strip .card{flex:0 0 240px;margin:0;scroll-snap-align:start}
